@@ -22,7 +22,8 @@ def compare_xai_methods(
     labels,
     output_dir=None,
     batch_size=10,
-    optimized_params=None
+    optimized_params=None,
+    overlay=False  # New flag to control overlay visualization
 ):
     """
     Compare visualizations using different XAI methods (GradCAM, Lime, and IntegratedGradients).
@@ -33,6 +34,8 @@ def compare_xai_methods(
         labels: Labels for the images
         output_dir: Directory to save visualizations
         batch_size: Number of examples to visualize
+        optimized_params: Parameters for LRP
+        overlay: If True, overlay heatmaps on original images instead of showing them separately
     """
     # Limit number of examples
     batch_size = min(batch_size, len(images))
@@ -110,7 +113,7 @@ def compare_xai_methods(
 
         # LRP
         lrp = UniformRuleLRP(model, rule_type='alpha_beta', rule_params=optimized_params)
-        lrp_attr = lrp.compute_relevance(images[:batch_size])
+        lrp_attr = lrp.compute_relevance(images[:batch_size], labels[:batch_size])
         attributions['URO_LRP'] = lrp_attr.detach().cpu().numpy()
     
     # Create visualizations for each example
@@ -145,23 +148,39 @@ def compare_xai_methods(
             plt.subplot(1, 5, idx)
             
             heatmap = attr[i].squeeze()
-            
-            # Handle different attribution formats
+            # # Handle different attribution formats
             if heatmap.ndim == 3:
-                if heatmap.shape[0] == 3:  # Channel-first format (C, H, W)
-                    heatmap = np.transpose(heatmap, (1, 2, 0))
-                
-                # For RGB attributions, use magnitude across channels
-                if heatmap.shape[-1] == 3:
-                    heatmap = np.linalg.norm(heatmap, axis=2)
-            
+                heatmap = np.mean(heatmap, axis=0)
             # Normalize for visualization
             vmax = max(abs(np.max(heatmap)), abs(np.min(heatmap)))
             if vmax == 0:  # Avoid division by zero
                 vmax = 1.0
             vmin = -vmax
             
-            plt.imshow(heatmap, cmap='bwr', vmin=vmin, vmax=vmax)
+            if overlay:
+                # Create a colormap for the heatmap
+                cmap = plt.cm.bwr
+                norm = Normalize(vmin=vmin, vmax=vmax)
+                heatmap_colored = cmap(norm(heatmap))
+                
+                # Set alpha channel based on absolute magnitude of relevance
+                # Increase the alpha values to make heatmap more visible
+                alpha = np.abs(heatmap) / vmax
+                alpha = np.clip(alpha * 2.0, 0.3, 0.9)  # Increased minimum alpha and scaling factor
+                heatmap_colored[..., 3] = alpha
+                
+                # Display original image
+                if img_display.shape[2] == 1:
+                    plt.imshow(img_display.squeeze(2), cmap='gray')
+                else:
+                    plt.imshow(img_display)
+                
+                # Overlay heatmap with higher overall opacity
+                plt.imshow(heatmap_colored, alpha=0.8)  # Increased from 0.7 to 0.8
+            else:
+                # Original visualization without overlay
+                plt.imshow(heatmap, cmap='bwr', vmin=vmin, vmax=vmax)
+            
             plt.colorbar()
             plt.title(method_name)
             plt.axis('off')
@@ -228,7 +247,30 @@ def compare_xai_methods(
                     vmax = 1.0
                 vmin = -vmax
                 
-                plt.imshow(heatmap, cmap='bwr', vmin=vmin, vmax=vmax)
+                if overlay:
+                    # Create a colormap for the heatmap
+                    cmap = plt.cm.bwr
+                    norm = Normalize(vmin=vmin, vmax=vmax)
+                    heatmap_colored = cmap(norm(heatmap))
+                    
+                    # Set alpha channel based on absolute magnitude of relevance
+                    # Increase the alpha values to make heatmap more visible
+                    alpha = np.abs(heatmap) / vmax
+                    alpha = np.clip(alpha * 2.0, 0.3, 0.9)  # Increased minimum alpha and scaling factor
+                    heatmap_colored[..., 3] = alpha
+                    
+                    # Display original image
+                    if img_display.shape[2] == 1:
+                        plt.imshow(img_display.squeeze(2), cmap='gray')
+                    else:
+                        plt.imshow(img_display)
+                    
+                    # Overlay heatmap with higher overall opacity
+                    plt.imshow(heatmap_colored, alpha=0.8)  # Increased from 0.7 to 0.8
+                else:
+                    # Original visualization without overlay
+                    plt.imshow(heatmap, cmap='bwr', vmin=vmin, vmax=vmax)
+                
                 plt.title(method_name)
                 plt.axis('off')
         
@@ -250,6 +292,7 @@ def main():
     parser.add_argument('--lrp_params', type=str, default='optimized_alphas_in.json', help='Path to the LRP parameters')
     parser.add_argument('--batch_size', type=int, default=5, help='Number of examples to visualize')
     parser.add_argument('--input_dir', type=str, default='/home/neuro/XAIProject/data/ImageNet', help='Input directory for images')
+    parser.add_argument('--overlay', action='store_true', help='Overlay heatmaps on original images')
     
     args = parser.parse_args()
         
@@ -279,7 +322,8 @@ def main():
         labels=labels,
         output_dir=args.output_dir,
         batch_size=args.batch_size,
-        optimized_params=optimized_params
+        optimized_params=optimized_params,
+        overlay=args.overlay
     )
     
     print(f"Visualizations saved to {args.output_dir}")

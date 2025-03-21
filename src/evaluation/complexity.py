@@ -36,12 +36,7 @@ def sparseness(relevance_map):
         if l2_norm > 0:  # Prevent division by zero
             hoyer = (np.sqrt(n) - (l1_norm / l2_norm)) / (np.sqrt(n) - 1)
         else:
-            hoyer = 0
-            
-        sparseness_scores.append(abs(hoyer.item()))
+            hoyer = np.array(0)
+        sparseness_scores.append(hoyer.item())
+
     return sparseness_scores
-    # Return mean sparseness if batch, or single value if one example
-    # if batch_size == 1:
-    #     return sparseness_scores[0]
-    # else:
-    #     return np.mean(sparseness_scores)

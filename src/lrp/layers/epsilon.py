@@ -105,7 +105,7 @@ class EpsilonRule:
         
         # Compute dynamic epsilon based on input tensor statistics
         epsilon = self._compute_epsilon(input_tensor)
-        
+
         # Compute forward activation with layer weights
         z = torch.matmul(input_tensor, layer.weight.t())
         if layer.bias is not None:
@@ -288,17 +288,17 @@ class EpsilonRule:
         indices = self.forward_info.get('max_pool_indices')
         if indices is None:
             # If no indices stored, we need to compute them
-            _, indices = torch.nn.functional.max_pool2d(
-                input_tensor, kernel_size=layer.kernel_size, stride=layer.stride,
-                padding=layer.padding, return_indices=True
-            )
-            self.forward_info['max_pool_indices'] = indices
+            with torch.no_grad():
+                output, indices = torch.nn.functional.max_pool2d(
+                    input_tensor, kernel_size=layer.kernel_size, stride=layer.stride,
+                    padding=layer.padding, return_indices=True
+                )
+                self.forward_info['max_pool_indices'] = indices
         
         # Ensure output size matches input size
-        output_size = input_tensor.shape[2:]
-        
+        output_size = self.forward_info['max_pool_input_shape']
         # Use max_unpool2d for backward propagation
-        return torch.nn.functional.max_unpool2d(
+        return torch.nn.functional.max_unpool2d( 
             relevance, indices, kernel_size=layer.kernel_size, stride=layer.stride,
             padding=layer.padding, output_size=output_size
         )

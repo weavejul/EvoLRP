@@ -4,59 +4,73 @@ dataset in input/ and computes the quantus metrics for the samples
 that are correctly classified by the model. Outputs the mean and standard deviation
 of the metrics.
 """
-
 import argparse
 import time
 import pathlib
-import quantus
-from captum.attr import LayerAttribution, LayerGradCam, Lime
+from captum.attr import LayerAttribution, LayerGradCam, Lime, IntegratedGradients
 from skimage.segmentation import slic
 
 import torch
 from torchvision.models import vgg16, VGG16_Weights
 
-from src.optimize import Optimizer
-from src.lrp import LRPModel
-from src.dataloader import get_data_loader
+from datasets import get_mnist_data, get_imagenet_data
+from models import load_model
+from lrp import UniformRuleLRP
+from evaluation import sparseness, pixel_flipping, average_sensitivity, faithfulness_correlation
 import numpy as np
+import json
+import warnings
+warnings.filterwarnings('ignore')
+import os
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128,expandable_segments:True'
 
-def compute_scores(model, x_batch, y_batch, a_batch, device, explain_func, explain_func_kwargs):
-    x_batch = x_batch.detach().cpu().numpy()
-    y_batch = y_batch.detach().cpu().numpy()
+def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criterion):
+    # x_batch = x_batch.detach().cpu().numpy()
+    # y_batch = y_batch.detach().cpu().numpy()
+    if criterion == 'sparseness':
+        # Calculate sparseness for this image
+        batch_scores = sparseness(a_batch)
+        # For sparseness, higher is better  
+    elif criterion == 'pixel_flipping':
+        # Calculate pixel flipping score for this image
+        batch_scores = pixel_flipping(
+            a_batch,
+            model,
+            x_batch,
+            y_batch,
+            num_steps=num_steps
+        )
+        # For pixel_flipping, higher score is better (indicates larger drop in prediction)
+    elif criterion == 'average_sensitivity':
+        batch_scores, _ = average_sensitivity(
+            a_batch,
+            model,
+            x_batch,
+            y_batch,
+            num_steps=num_steps,
+            baseline=baseline
+        )
+        # For average_sensitivity, higher AUC is better
+    elif criterion == 'faithfulness':
+        kwargs = {
+            'subset_size': 10, # check this
+        }
+        batch_scores = faithfulness_correlation(
+            a_batch,
+            model,
+            x_batch,
+            y_batch,
+            num_steps=num_steps,
+            **kwargs
+        )
+        # higher is better
+    else:
+        raise ValueError(f"Unknown criterion: {criterion}")
     
-    metric = quantus.AvgSensitivity(
-        nr_samples=10,
-        lower_bound=0.2,
-        norm_numerator=quantus.norm_func.fro_norm,
-        norm_denominator=quantus.norm_func.fro_norm,
-        perturb_func=quantus.perturb_func.uniform_noise,
-            similarity_func=quantus.similarity_func.difference,
-    )   
-
-    # metric = quantus.EffectiveComplexity(
-    #     eps=1e-5,   
-    # )
-
-    # quantus.FaithfulnessCorrelation(
-    #     nr_runs=100,  
-    #     subset_size=224,  
-    #     perturb_baseline="black",
-    #     perturb_func=quantus.perturb_func.baseline_replacement_by_indices,
-    #     similarity_func=quantus.similarity_func.correlation_pearson,  
-    #     abs=False,  
-    #     return_aggregate=False,
-    # )
-    scores = metric(    
-        model=model,
-        x_batch=x_batch,
-        y_batch=y_batch,
-        a_batch=a_batch,
-        device=device,
-        explain_func=explain_func,
-        explain_func_kwargs=explain_func_kwargs,
-    )
-
-    return scores
+    # Use a weighted combination of mean and minimum for robust optimization
+    mean_score = sum(batch_scores) / len(batch_scores)
+    
+    return mean_score
 
 if __name__ == "__main__":
 
@@ -67,7 +81,7 @@ if __name__ == "__main__":
         "--input-dir",
         dest="input_dir",
         help="Input directory.",
-        default="./input/",
+        default="/home/neuro/XAIProject/data/ImageNet",
     )
     parser.add_argument(
         "-o",
@@ -77,7 +91,7 @@ if __name__ == "__main__":
         default="./output/",
     )
     parser.add_argument(
-        "-b", "--batch-size", dest="batch_size", help="Batch size.", default=1, type=int
+        "-b", "--batch-size", dest="batch_size", help="Batch size.", default=8, type=int
     )
     parser.add_argument(
         "-d",
@@ -113,10 +127,29 @@ if __name__ == "__main__":
         "--xai-method",
         dest="xai_method",
         help="XAI method",
-        default="lrp",
+        default="IntegratedGradients",
         type=str,
         choices=["lrp", "LayerGradCam", "Lime", "IntegratedGradients"]
     )
+    parser.add_argument(
+        "-c",
+        "--criterion",
+        dest="criterion",
+        help="Criterion",
+        default="sparseness",
+        type=str,
+        choices=["sparseness", "pixel_flipping", "average_sensitivity", "faithfulness"]
+    )
+
+    parser.add_argument(
+        "-p",
+        "--lrp-params",
+        dest="lrp_params",
+        help="LRP parameters",
+        default="optimized_alphas_in.json",
+        type=str
+    )
+
     config = parser.parse_args()
 
     pathlib.Path(config.output_dir).mkdir(parents=True, exist_ok=True)
@@ -128,7 +161,7 @@ if __name__ == "__main__":
     print("Input dir: ", config.input_dir)
     print("Output dir: ", config.output_dir)
     print("XAI method: ", config.xai_method)
-
+    print("Criterion: ", config.criterion)
     # set up parameters
     if config.device == "gpu":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -136,35 +169,55 @@ if __name__ == "__main__":
         device = torch.device("cpu")
 
     print(f"Using: {device}\n")
-
-    data_loader = get_data_loader(config)
-
-    model = vgg16(weights=VGG16_Weights.DEFAULT)
+    conv_layer = None
+    if "ImageNet" in config.input_dir:
+        data_loader = get_imagenet_data(config)
+        model = vgg16(weights=VGG16_Weights.DEFAULT)
+        conv_layer = model.features[-3]
+    else:
+        data_loader = get_mnist_data(batch_size=config.batch_size)
+        model = load_model('models/mnist_cnn.pth')
+        conv_layer = model.features[-4]
     model.to(device)
     model.eval()
 
     # set up LRP model
-    if config.mode == "uniform_rule":
-        lrp_model = LRPModel.from_uniform_rule(model=model, rule_name=config.rule_name, per_layer_values=[0] * 40)
-    elif config.mode == "uniform_value":
-        lrp_model = LRPModel.from_uniform_value(model=model, per_layer_rules=config.per_layer_rules)
-    elif config.mode == "layer_type":
-        lrp_model = LRPModel.from_layer_type(model=model, layer_type_config=config.layer_type_config)
-    elif config.mode == "composite_layer":
-        lrp_model = LRPModel.from_composite_layer(model=model, composite_config=config.composite_layer_config)
-    else:
-        raise ValueError(f"Invalid mode: {config.mode}")
+    # Load parameters from JSON files
+    lrp_model = None
 
+    if config.xai_method == "lrp":
+        with open(config.lrp_params, 'r') as f:
+            lrp_params = torch.tensor(json.load(f))
+
+        if config.mode == "uniform_rule":
+            lrp_model = UniformRuleLRP(model, rule_type=config.rule_name, rule_params=lrp_params)
+        # elif config.mode == "uniform_value":
+        #     lrp_model = LRPModel.from_uniform_value(model=model, per_layer_rules=config.per_layer_rules)
+        # elif config.mode == "layer_type":
+        #     lrp_model = LRPModel.from_layer_type(model=model, layer_type_config=config.layer_type_config)
+        # elif config.mode == "composite_layer":
+        #     lrp_model = LRPModel.from_composite_layer(model=model, composite_config=config.composite_layer_config)
+        else:
+            raise ValueError(f"Invalid mode: {config.mode}")
+
+    # set up XAI methods
     lime = Lime(model)
+    ig = IntegratedGradients(model)
+    gradcam = LayerGradCam(model, conv_layer)
 
     scores = np.array([])
     for i, (x, y) in enumerate(data_loader):
+        # Print GPU memory usage
+        # print(f"Memory allocated: {torch.cuda.memory_allocated() / 1e9} GB")
+        # print(f"Memory reserved: {torch.cuda.memory_reserved() / 1e9} GB")
+            
         x = x.to(device)
         y = y.to(device) 
 
         # remove mislabeled images
-        y_pred = model(x)
-        y_pred_classes = torch.argmax(y_pred, dim=1)  # Get the predicted classes
+        with torch.no_grad():  # Add no_grad here to prevent memory leaks during inference
+            y_pred = model(x)
+            y_pred_classes = torch.argmax(y_pred, dim=1)  # Get the predicted classes
         
         # Create a mask of correct predictions
         correct_mask = (y_pred_classes == y)
@@ -172,42 +225,24 @@ if __name__ == "__main__":
         # Keep only the correct predictions
         x = x[correct_mask]
         y = y[correct_mask]
-        
         # Check if we have any samples left
         if len(x) == 0:
             print("Warning: All predictions were incorrect in this batch")
             continue
-        # might have to fix types and shapes before calling optimizer
-        def lrp_func(model, targets, **kwargs) -> np.ndarray:
-            x = kwargs["inputs"]
-            x = torch.tensor(x).to(device)
-            a_batch = lrp_model(x)
-
-            if a_batch.shape[0] != x.shape[0]:
-                a_batch = a_batch.unsqueeze(0)
-
-            return a_batch
-
-        if config.xai_method == "lrp":
-            a_batch = lrp_model.forward(x)
-            a_batch = a_batch.detach().cpu().numpy()
-            explain_func = lrp_func
-            explain_func_kwargs = None
-        else:
-            explain_func = quantus.explain
-            # Convert x to torch tensor and move to correct device
-            # x = torch.tensor(x, device=device)
-
-            if config.xai_method == "LayerGradCam":
-                # layer_gradcam = LayerGradCam(model, model.features[-3])
-                # attributions_lgc = layer_gradcam.attribute(x, target=y)
-                # Add target layer for LayerGradCam
-                explain_func_kwargs = {
-                    "method": config.xai_method,
-                    "gc_layer": model.features[-3],
-                    "interpolate": (224, 224) # TODO: is this right - can also add method
-                }
-                a_batch = quantus.explain(model, x, y, kwargs=explain_func_kwargs)
+        try:  # Add try-except to handle potential OOM errors gracefully
+            if config.xai_method == "lrp":
+                a_batch = lrp_model.compute_relevance(x, y)
+            elif config.xai_method == "LayerGradCam":
+                gradcam_attr = gradcam.attribute(
+                    x,
+                    target=y
+                )
+                # Use a more sophisticated interpolation method
+                a_batch = LayerAttribution.interpolate(
+                    gradcam_attr, 
+                    x.shape[2:],
+                    interpolate_mode='bicubic'  # Use bicubic interpolation instead of default
+                )
             elif config.xai_method == "Lime":
                 # Create feature masks for each image in the batch
                 feature_masks = []
@@ -219,52 +254,68 @@ if __name__ == "__main__":
                 
                 # Stack all feature masks and move to device
                 feature_masks = torch.tensor(np.stack(feature_masks)).to(device)
-
-                def lime_func(model, targets, **kwargs) -> np.ndarray:
-                    x = kwargs["inputs"]
-                    x = torch.tensor(x).to(device)
-                    targets = torch.tensor(targets).to(device)
-                    # Ensure feature mask matches batch dimension
-                    # print(feature_masks.shape)
-                    # curr_feature_mask = feature_masks.unsqueeze(1).repeat(1, x.shape[0], 1, 1)
-                    curr_feature_mask = feature_masks.unsqueeze(1)
-                    a_batch = lime.attribute(
-                        x, 
-                        target=targets,
-                        feature_mask=curr_feature_mask,
-                        n_samples=40,
-                        perturbations_per_eval=16,
-                        show_progress=True
-                    )   
-
-                    if a_batch.shape[0] != x.shape[0]:
-                        a_batch = a_batch.unsqueeze(0)
-                    a_batch = a_batch.detach().cpu().numpy()
-
-                    return a_batch
-
-                explain_func_kwargs = None
-                explain_func = lime_func
-                # print(feature_masks.shape)
-
                 a_batch = lime.attribute(
                     x,
                     target=y,
                     feature_mask=feature_masks.unsqueeze(1),
                     n_samples=40,
                     perturbations_per_eval=16,
-                    show_progress=True
+                    show_progress=False
                 )   
-                a_batch = a_batch.detach().cpu().numpy()
+            elif config.xai_method == "IntegratedGradients":
+                a_batch, _ = ig.attribute(
+                    x,
+                    baselines=0,
+                    target=y,
+                    method='gausslegendre',
+                    return_convergence_delta=True
+                )
             else:
-                explain_func_kwargs = {"method": config.xai_method}
-                a_batch = quantus.explain(model, x, y, kwargs=explain_func_kwargs)
+                raise ValueError(f"Invalid XAI method: {config.xai_method}")
 
-        if x.shape[0] != a_batch.shape[0]:
-            a_batch = a_batch.unsqueeze(0)
-
-        batch_scores = compute_scores(model, x, y, a_batch, device, explain_func, explain_func_kwargs)
-        scores = np.concatenate((scores, np.array(batch_scores)))
-
-    print(np.mean(scores))
-    print(np.std(scores))
+            if x.shape[0] != a_batch.shape[0]:
+                a_batch = a_batch.unsqueeze(0)
+            batch_scores = compute_scores(model, x, y, a_batch, num_steps=5, baseline='zero', criterion=config.criterion)
+            if type(batch_scores) == torch.Tensor:
+                batch_scores = batch_scores.detach().cpu().numpy().item()
+            if batch_scores is None:
+                batch_scores = 0
+            scores = np.append(scores, batch_scores)
+            
+            # Explicitly delete tensors to free memory
+            del a_batch, x, y, y_pred, y_pred_classes, batch_scores
+                
+            # Force garbage collection
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
+            
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e):
+                print(f"CUDA OOM in batch {i}, skipping and clearing memory...")
+                torch.cuda.empty_cache()
+                import gc
+                gc.collect()
+                break
+            else:
+                raise e
+    
+    # Add checks before calculating statistics
+    if scores.size == 0:
+        print("Warning: No valid scores were collected")
+        mean_score = float('nan')
+        std_score = float('nan')
+    else:
+        # Filter out any NaN values before calculating statistics
+        valid_scores = scores[~np.isnan(scores)]
+        if valid_scores.size == 0:
+            print("Warning: All scores were NaN")
+            mean_score = float('nan')
+            std_score = float('nan')
+        else:
+            mean_score = np.mean(valid_scores)
+            std_score = np.std(valid_scores)
+    
+    print(f"Number of valid scores: {scores.size}")
+    print(f"Mean score: {mean_score}")
+    print(f"Standard deviation: {std_score}")

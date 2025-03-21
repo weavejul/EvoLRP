@@ -7,7 +7,7 @@ from lrp import UniformRuleLRP
 import traceback
 
 def create_fitness_function(model, images, labels=None, criterion='sparseness', rule_type='alpha_beta', 
-                          weights=(0.7, 0.3), baseline='zero', num_steps=5):
+                          weights=(0.7, 0.3), baseline='zero', num_steps=5, correct_class_only=False):
     """
     Creates a fitness function for optimizing LRP parameters based on different evaluation criteria.
     
@@ -20,6 +20,7 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
         weights: Tuple of (mean_weight, min_weight) for combining batch scores
         baseline: Baseline for average_sensitivity ('zero' or 'mean')
         num_steps: Number of steps for pixel_flipping and average_sensitivity
+        correct_class_only: If True, calculate relevance only for the correct class
     
     Returns:
         Function that takes a parameter set and returns a fitness score
@@ -37,9 +38,11 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
             constrained_params = torch.tensor(constrained_params)
             
             # Create LRP with constrained parameters
-            lrp = UniformRuleLRP(model, rule_type=rule_type, rule_params=constrained_params)
+            lrp = UniformRuleLRP(model, rule_type=rule_type, rule_params=constrained_params, 
+                              correct_class_only=correct_class_only)
+            
             with torch.no_grad():  # No need for gradients during LRP
-                relevance_map = lrp.compute_relevance(images)
+                relevance_map = lrp.compute_relevance(images, labels if correct_class_only else None)
             
             # Compute scores based on the chosen criterion
             batch_scores = []
@@ -102,14 +105,14 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
             else:
                 raise ValueError(f"Unknown criterion: {criterion}")
             
-            # TODO: take abs values?
             # Use a weighted combination of mean and minimum for robust optimization
             mean_score = sum(batch_scores) / len(batch_scores)
             min_score = min(batch_scores)
             combined_score = weights[0] * mean_score + weights[1] * min_score
             
-            # Return negated score for minimization (all criteria are better when higher)
-            return -combined_score
+            # Return negated score for minimization
+            sign = 1 if criterion == 'average_sensitivity' else -1
+            return sign * combined_score
             
         except Exception as e:
             print(f"Error in fitness function: {e}")

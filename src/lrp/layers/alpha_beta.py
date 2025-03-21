@@ -73,7 +73,10 @@ class AlphaBetaRule:
         handler = layer_handlers.get(layer_type)
         
         if handler:
-            return handler(layer, relevance, input_tensor)
+            result = handler(layer, relevance, input_tensor)
+            # Force cleanup of intermediate tensors if needed
+            torch.cuda.empty_cache()  # Only if using CUDA
+            return result
         else:
             # For unknown layer types, try to handle them based on their structure
             if hasattr(layer, 'weight') and hasattr(layer, 'bias'):

@@ -2,10 +2,11 @@
 import torch
 import torch.nn as nn
 from .base import LRP
-from .layers import AlphaBetaRule, EpsilonRule
+from .layers import AlphaBetaRule, EpsilonRule, GammaRule
+import gc
 
 class UniformRuleLRP(LRP):
-    def __init__(self, model: nn.Module, rule_type: str, rule_params: torch.Tensor):
+    def __init__(self, model: nn.Module, rule_type: str, rule_params: torch.Tensor, correct_class_only: bool = False):
         """
         Uniform LRP where all layers use the same rule type but with different hyperparameters.
         
@@ -13,9 +14,11 @@ class UniformRuleLRP(LRP):
             model: The neural network model
             rule_type: One of 'epsilon', 'alpha_beta', or 'gamma'
             rule_params: Tensor of shape (num_layers,) containing hyperparameters for each layer
+            correct_class_only: If True, calculate relevance only for the correct class
         """
         super().__init__(model)
         self.rule_type = rule_type
+        self.correct_class_only = correct_class_only
         
         # Get total number of layers from features and classifier
         self.num_layers = len(list(model.features)) + len(list(model.classifier))
@@ -60,13 +63,25 @@ class UniformRuleLRP(LRP):
                 relevance = relevance / max_val
         return relevance
 
-    def compute_relevance(self, input_tensor):
+    def compute_relevance(self, input_tensor, labels=None):
         """
         Computes LRP relevance scores using the specified rule type with layer-specific hyperparameters.
+        
+        Args:
+            input_tensor: The input tensor to compute relevance for
+            labels: Optional class labels, required if correct_class_only=True
         """
+        # Check if labels are provided when needed
+        if self.correct_class_only and labels is None:
+            raise ValueError("Labels must be provided when correct_class_only=True")
+            
         # Ensure input is at least 4D (batch, channels, height, width)
         if len(input_tensor.shape) == 3:
             input_tensor = input_tensor.unsqueeze(0)
+            if labels is not None and not torch.is_tensor(labels):
+                labels = torch.tensor([labels], device=input_tensor.device)
+            elif labels is not None:
+                labels = labels.unsqueeze(0)
         
         # Store input shape for later use
         self.forward_info['input_shape'] = input_tensor.shape
@@ -123,13 +138,16 @@ class UniformRuleLRP(LRP):
             
             # Store additional layer-specific information
             if isinstance(layer, nn.MaxPool2d):
-                # Store max pooling indices
+                # Store max pooling indices and input shape for unpooling
+                # print(f"activations[-2]: {activations[-2].shape}")
+                input_for_pooling = activations[-2]
                 _, indices = torch.nn.functional.max_pool2d(
-                    activations[-2], kernel_size=layer.kernel_size,
+                    input_for_pooling, kernel_size=layer.kernel_size,
                     stride=layer.stride, padding=layer.padding,
                     return_indices=True
                 )
                 self.forward_info[f'layer_{i}']['indices'] = indices
+                self.forward_info[f'layer_{i}']['input_shape_for_unpooling'] = input_for_pooling.shape
             elif isinstance(layer, nn.BatchNorm2d):
                 # Store batch norm statistics
                 self.forward_info[f'layer_{i}']['mean'] = layer.running_mean
@@ -137,6 +155,20 @@ class UniformRuleLRP(LRP):
         
         # Initialize relevance with the output
         relevance = current_activation.clone().detach()
+        del current_activation
+        
+        # If we want to focus on correct class only
+        if self.correct_class_only:
+            # Create a mask with zeros and set only the correct class to the activation value
+            batch_size = relevance.shape[0]
+            num_classes = relevance.shape[1]
+            mask = torch.zeros_like(relevance)
+            
+            # Set only the correct class relevance
+            for i in range(batch_size):
+                mask[i, labels[i]] = relevance[i, labels[i]]
+                
+            relevance = mask
         
         # Backward pass to compute relevance
         for i, (layer, activation) in enumerate(zip(reversed(layers), reversed(activations[:-1]))):
@@ -151,8 +183,10 @@ class UniformRuleLRP(LRP):
                 rule = AlphaBetaRule(alpha=alpha, beta=beta)
                 
                 # Propagate relevance through layer
-                relevance = rule.propagate(layer, relevance, activation)
+                with torch.no_grad(): # TODO: check if this is necessary
+                    relevance = rule.propagate(layer, relevance, activation)
                 
+                del rule
                 # Check if we need to reshape after propagating through a Linear layer
                 if 'flattened' in layer_info and layer_info['flattened']:
                     # Reshape back to the original shape before flattening
@@ -170,16 +204,74 @@ class UniformRuleLRP(LRP):
                 # Share forward information from UniformRuleLRP with the rule
                 rule.forward_info = self.forward_info
                 
+                # Add layer-specific information to the rule
+                if isinstance(layer, nn.MaxPool2d) and f'layer_{layer_idx}' in self.forward_info:
+                    # Extract the indices for this specific max pool layer
+                    layer_info = self.forward_info[f'layer_{layer_idx}']
+                    if 'indices' in layer_info:
+                        rule.forward_info['max_pool_indices'] = layer_info['indices']
+                        # Also pass the input shape for unpooling
+                        rule.forward_info['max_pool_input_shape'] = layer_info['input_shape_for_unpooling']
+                        # Pass the complete output_size for max_unpool2d
+                        rule.forward_info['output_size'] = layer_info['input_shape_for_unpooling']
+                
+                # if linear, flatten the activation
+                if isinstance(layer, nn.Linear) and 'flattened' in layer_info and layer_info['flattened']:
+                    activation = activation.view(activation.shape[0], -1)
+
+                # print(f"activation shape: {activation.shape}")    
                 # Propagate relevance through layer
-                relevance = rule.propagate(layer, relevance, activation)
+                with torch.no_grad(): # TODO: check if this is necessary    
+                    relevance = rule.propagate(layer, relevance, activation)
+                del rule
+
+                # Check if we need to reshape after propagating through a Linear layer
+                if 'flattened' in layer_info and layer_info['flattened']:
+                    # Reshape back to the original shape before flattening
+                    pre_flatten_shape = layer_info['pre_flatten_shape']
+                    relevance = relevance.view(pre_flatten_shape)
+                    activation = activation.view(pre_flatten_shape)
                 
                 # Ensure relevance shape matches activation shape
                 if relevance.shape != activation.shape:
                     raise ValueError(f"Layer {i}: Relevance shape {relevance.shape} doesn't match activation shape {activation.shape}")
             elif self.rule_type == 'gamma':
                 gamma = self.rule_params[self.num_layers - 1 - i]
-                # TODO: Implement gamma rule
-                raise NotImplementedError("Gamma rule not implemented yet")
+                # Create gamma rule with the corresponding gamma parameter
+                rule = GammaRule(gamma=gamma)
+                
+                # Share forward information from UniformRuleLRP with the rule
+                rule.forward_info = self.forward_info
+                
+                # Add layer-specific information to the rule
+                if isinstance(layer, nn.MaxPool2d) and f'layer_{layer_idx}' in self.forward_info:
+                    # Extract the indices for this specific max pool layer
+                    layer_info = self.forward_info[f'layer_{layer_idx}']
+                    if 'indices' in layer_info:
+                        rule.forward_info['max_pool_indices'] = layer_info['indices']
+                        # Also pass the input shape for unpooling
+                        rule.forward_info['max_pool_input_shape'] = layer_info['input_shape_for_unpooling']
+                        # Pass the complete output_size for max_unpool2d
+                        rule.forward_info['output_size'] = layer_info['input_shape_for_unpooling']
+                
+                # If linear, flatten the activation
+                if isinstance(layer, nn.Linear) and 'flattened' in layer_info and layer_info['flattened']:
+                    activation = activation.view(activation.shape[0], -1)
+                
+                # Propagate relevance through layer
+                with torch.no_grad(): # TODO: check if this is necessary
+                    relevance = rule.propagate(layer, relevance, activation)
+                del rule
+                # Check if we need to reshape after propagating through a Linear layer
+                if 'flattened' in layer_info and layer_info['flattened']:
+                    # Reshape back to the original shape before flattening
+                    pre_flatten_shape = layer_info['pre_flatten_shape']
+                    relevance = relevance.view(pre_flatten_shape)
+                    activation = activation.view(pre_flatten_shape)
+                
+                # Ensure relevance shape matches activation shape
+                if relevance.shape != activation.shape:
+                    raise ValueError(f"Layer {i}: Relevance shape {relevance.shape} doesn't match activation shape {activation.shape}")
             else:
                 raise ValueError(f"Unknown rule type: {self.rule_type}")
             

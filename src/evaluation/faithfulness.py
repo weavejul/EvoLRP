@@ -140,6 +140,6 @@ def pixel_flipping(relevance_map, model, input_tensor, label, num_steps=5):
     
     # Stack scores across steps and calculate mean for each batch item
     batch_scores = torch.stack(batch_scores)  # Shape: [num_steps, batch_size]
-    mean_scores = torch.mean(batch_scores, dim=1)
+    mean_scores = torch.mean(torch.abs(batch_scores), dim=0)
     
     return mean_scores
