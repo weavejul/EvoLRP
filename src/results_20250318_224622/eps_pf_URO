@@ -1,0 +1,72 @@
+2025-03-23 22:36:53,342 - EvoLRP - INFO - Loading pretrained VGG16 model
+2025-03-23 22:36:54,403 - EvoLRP - INFO - Processed batch of 8 images with labels: [902, 191, 314, 651, 367, 494, 339, 868]
+2025-03-23 22:36:54,407 - EvoLRP - INFO - Model has 38 layers for optimization
+2025-03-23 22:36:54,407 - EvoLRP - INFO - Initialized epsilon parameters: all layers set to epsilon=2.0
+2025-03-23 22:36:54,691 - EvoLRP - INFO - Computed initial relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-23 22:36:54,822 - EvoLRP - INFO - Initial pixel_flipping scores: tensor([0.9521, 0.9517, 0.5383, 0.7491, 0.8357, 0.0122, 0.9968, 0.0065],
+       device='cuda:0')
+2025-03-23 22:36:54,822 - EvoLRP - INFO - Average initial pixel_flipping score: 0.6303
+(50_w,100)-aCMA-ES (mu_w=27.0,w_1=8%) in dimension 38 (seed=896923, Sun Mar 23 22:36:54 2025)
+2025-03-23 22:36:54,935 - EvoLRP - INFO - Starting optimization with 100 generations
+2025-03-23 22:36:54,935 - EvoLRP - INFO - Using pixel_flipping criterion with weights: mean=0.8, min=0.2
+2025-03-23 22:37:15,766 - EvoLRP - INFO - Generation 1/100
+Iterat #Fevals   function value  axis ratio  sigma  min&max std  t[m:s]
+    1    100 -5.056909918785095e-01 1.0e+00 2.94e-01  3e-01  3e-01 0:20.8
+2025-03-23 22:39:02,423 - EvoLRP - INFO - Generation 6/100
+    6    600 -5.057159066200256e-01 1.2e+00 5.48e-01  5e-01  6e-01 2:07.5
+å2025-03-23 22:40:50,556 - EvoLRP - INFO - Generation 11/100
+   11   1100 -5.057250261306763e-01 1.4e+00 6.71e-01  6e-01  7e-01 3:55.6
+2025-03-23 22:42:38,699 - EvoLRP - INFO - Generation 16/100
+   16   1600 -5.057353377342224e-01 1.6e+00 8.02e-01  6e-01  8e-01 5:43.8
+2025-03-23 22:44:26,794 - EvoLRP - INFO - Generation 21/100
+   21   2100 -5.057358145713806e-01 1.9e+00 9.50e-01  7e-01  1e+00 7:31.9
+2025-03-23 22:46:14,886 - EvoLRP - INFO - Generation 26/100
+   26   2600 -5.057386755943298e-01 2.2e+00 1.26e+00  9e-01  1e+00 9:19.9
+2025-03-23 22:48:02,980 - EvoLRP - INFO - Generation 31/100
+   31   3100 -5.057423114776611e-01 2.6e+00 1.30e+00  8e-01  2e+00 11:08.0
+2025-03-23 22:48:46,214 - EvoLRP - INFO - Early stopping at generation 33 due to no improvement for 10 generations
+2025-03-23 22:48:46,214 - EvoLRP - INFO - Optimization complete
+2025-03-23 22:48:46,214 - EvoLRP - INFO - Constrained epsilon parameters: [0.6367943425405813, 0.16120569992899172, 0.13823352269652486, 1.0, 1.0, 0.832601176406977, 0.8901685083992739, 0.7946451099012185, 0.13228045296839608, 1.0, 1.0, 1.0, 0.08076006666682012, 0.24216573545217812, 0.7311838654261157, 0.8092699593579721, 0.1703996003756123, 1.0, 0.253193028263067, 1.0, 1.0, 1.0, 1.0, 0.9532517406627912, 0.41378210126103926, 0.8621459756167343, 1.0, 0.21862155778979786, 1.0, 1.0, 0.9138674960625996, 1.0, 1.0, 1.0, 1.0, 0.3722287050194228, 0.4359784649358568, 1.0]
+2025-03-23 22:48:46,260 - EvoLRP - INFO - Computed optimized relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-23 22:48:46,322 - EvoLRP - INFO - Optimized pixel_flipping scores: tensor([0.9522, 0.9514, 0.5383, 0.7491, 0.8360, 0.0121, 0.9967, 0.0020],
+       device='cuda:0')
+2025-03-23 22:48:46,322 - EvoLRP - INFO - Average optimized pixel_flipping score: 0.6297
+2025-03-23 22:48:46,845 - EvoLRP - INFO - Parameter saving is disabled. Use --save_params to enable.
+2025-03-23 22:48:46,845 - EvoLRP - INFO - Optimization results summary:
+2025-03-23 22:48:46,845 - EvoLRP - INFO -   Initial average pixel_flipping score: 0.6303
+2025-03-23 22:48:46,845 - EvoLRP - INFO -   Optimized average pixel_flipping score: 0.6297
+2025-03-23 22:48:46,845 - EvoLRP - INFO -   Absolute improvement: -0.0005
+2025-03-23 22:48:46,845 - EvoLRP - INFO -   Relative improvement: -0.09%
+
+2025-03-23 22:54:57,849 - EvoLRP - INFO - Loaded ImageNet dataset with batch size 8 and subset size 100
+2025-03-23 22:54:57,849 - EvoLRP - INFO - Loading pretrained VGG16 model
+2025-03-23 22:54:59,043 - EvoLRP - INFO - Processed batch of 8 images with labels: [328, 471, 423, 991, 292, 147, 30, 795]
+2025-03-23 22:54:59,047 - EvoLRP - INFO - Model has 38 layers for optimization
+2025-03-23 22:54:59,047 - EvoLRP - INFO - Initialized epsilon parameters: all layers set to epsilon=0.25
+2025-03-23 22:54:59,441 - EvoLRP - INFO - Computed initial relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-23 22:54:59,583 - EvoLRP - INFO - Initial pixel_flipping scores: tensor([0.9334, 0.2029, 0.9915, 0.9122, 0.7777, 0.9923, 0.7041, 0.9743],
+       device='cuda:0')
+2025-03-23 22:54:59,583 - EvoLRP - INFO - Average initial pixel_flipping score: 0.8110
+(50_w,100)-aCMA-ES (mu_w=27.0,w_1=8%) in dimension 38 (seed=879018, Sun Mar 23 22:54:59 2025)
+2025-03-23 22:54:59,693 - EvoLRP - INFO - Starting optimization with 100 generations
+2025-03-23 22:54:59,693 - EvoLRP - INFO - Using pixel_flipping criterion with weights: mean=0.8, min=0.2
+2025-03-23 22:55:37,246 - EvoLRP - INFO - Generation 1/100
+Iterat #Fevals   function value  axis ratio  sigma  min&max std  t[m:s]
+    1    100 -7.169810533523560e-01 1.0e+00 3.12e-01  3e-01  3e-01 0:37.6
+2025-03-23 22:58:48,451 - EvoLRP - INFO - Generation 6/100
+    6    600 -7.174445986747742e-01 1.3e+00 6.02e-01  6e-01  6e-01 3:48.8
+2025-03-23 23:02:00,125 - EvoLRP - INFO - Generation 11/100
+   11   1100 -7.174432277679443e-01 1.5e+00 9.75e-01  9e-01  1e+00 7:00.4
+2025-03-23 23:03:55,229 - EvoLRP - INFO - Early stopping at generation 14 due to no improvement for 10 generations
+2025-03-23 23:03:55,229 - EvoLRP - INFO - Optimization complete
+2025-03-23 23:03:55,229 - EvoLRP - INFO - Constrained epsilon parameters: [0.05443424541280645, 0.6994696435933825, 0.5042712360818029, 0.08763352858820359, 1.0, 0.52413922251001, 0.6584344048339352, 1.0, 0.33302216238025817, 0.3869659929944042, 0.02296672971600681, 0.4528350839031568, 0.09907546494013797, 0.4042029075690442, 0.8425027043200456, 0.7407986438941823, 0.04228586245439531, 0.3107446526964669, 0.2452967799768186, 0.6940974516828199, 1.0, 1.0, 0.7256498448392499, 0.7428831070235554, 0.11568213229562552, 0.6052536645210427, 1.0, 1.0, 0.9042504572494304, 0.00043992608759274576, 0.28444002326864154, 0.030733721170932267, 0.6888517395919912, 1.0, 0.6950224605689338, 0.3745215249443669, 0.6685644179932222, 0.6279646105654575]
+2025-03-23 23:03:55,310 - EvoLRP - INFO - Computed optimized relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-23 23:03:55,372 - EvoLRP - INFO - Optimized pixel_flipping scores: tensor([0.9331, 0.2029, 0.9914, 0.8891, 0.7767, 0.9922, 0.9447, 0.9717],
+       device='cuda:0')
+2025-03-23 23:03:55,372 - EvoLRP - INFO - Average optimized pixel_flipping score: 0.8377
+2025-03-23 23:03:55,905 - EvoLRP - INFO - Parameter saving is disabled. Use --save_params to enable.
+2025-03-23 23:03:55,906 - EvoLRP - INFO - Optimization results summary:
+2025-03-23 23:03:55,908 - EvoLRP - INFO -   Initial average pixel_flipping score: 0.8110
+2025-03-23 23:03:55,908 - EvoLRP - INFO -   Optimized average pixel_flipping score: 0.8377
+2025-03-23 23:03:55,908 - EvoLRP - INFO -   Absolute improvement: 0.0267
+2025-03-23 23:03:55,909 - EvoLRP - INFO -   Relative improvement: 3.29%

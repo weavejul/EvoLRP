@@ -1,0 +1,40 @@
+2025-03-22 11:43:49,025 - EvoLRP - INFO - Using GPU 0
+2025-03-22 11:43:49,025 - EvoLRP - INFO - Running EvoLRP with alpha_beta rule on imagenet dataset
+2025-03-22 11:43:49,025 - EvoLRP - INFO - Relevance will be calculated for all output neurons
+2025-03-22 11:43:49,025 - EvoLRP - INFO - Using device: cuda
+2025-03-22 11:43:49,090 - EvoLRP - INFO - Loaded ImageNet dataset with batch size 8 and subset size 100
+2025-03-22 11:43:49,090 - EvoLRP - INFO - Loading pretrained VGG16 model
+2025-03-22 11:43:50,137 - EvoLRP - INFO - Processed batch of 8 images with labels: [436, 295, 999, 264, 733, 921, 844, 295]
+2025-03-22 11:43:50,142 - EvoLRP - INFO - Model has 38 layers for optimization
+2025-03-22 11:43:50,142 - EvoLRP - INFO - Initialized for UniformValue optimization:
+2025-03-22 11:43:50,142 - EvoLRP - INFO -   Initial rule types: all layers set to alpha_beta
+2025-03-22 11:43:50,142 - EvoLRP - INFO -   Rule values: {'alpha_beta': 2.0, 'epsilon': 0.25, 'gamma': 0.25}
+2025-03-22 11:43:50,534 - EvoLRP - INFO - Computed initial relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-22 11:43:51,161 - EvoLRP - INFO - Initial average_sensitivity scores: tensor([0.5019, 0.4616, 0.6504, 0.4094, 0.7152, 0.5157, 0.9929, 0.4881],
+       device='cuda:0')
+2025-03-22 11:43:51,161 - EvoLRP - INFO - Average initial average_sensitivity score: 0.5919
+(50_w,100)-aCMA-ES (mu_w=27.0,w_1=8%) in dimension 38 (seed=731386, Sat Mar 22 11:43:51 2025)
+2025-03-22 11:43:51,430 - EvoLRP - INFO - Starting optimization with 30 generations
+2025-03-22 11:43:51,430 - EvoLRP - INFO - Using average_sensitivity criterion with weights: mean=0.8, min=0.2
+2025-03-22 11:46:25,538 - EvoLRP - INFO - Generation 1/30
+Iterat #Fevals   function value  axis ratio  sigma  min&max std  t[m:s]
+    1    100 5.386919975280762e-01 1.0e+00 2.78e-01  3e-01  3e-01 2:34.1
+2025-03-22 11:59:06,694 - EvoLRP - INFO - Generation 6/30
+    6    600 4.092163443565369e-01 1.2e+00 2.71e-01  3e-01  3e-01 15:15.3
+2025-03-22 12:11:49,185 - EvoLRP - INFO - Generation 11/30
+   11   1100 3.228108584880829e-01 1.3e+00 3.13e-01  3e-01  3e-01 27:57.8
+2025-03-22 12:11:49,185 - EvoLRP - INFO - Early stopping at generation 11 due to no improvement for 10 generations
+2025-03-22 12:11:49,185 - EvoLRP - INFO - Optimization complete
+2025-03-22 12:11:49,185 - EvoLRP - INFO - Optimized rule type assignments:
+2025-03-22 12:11:49,185 - EvoLRP - INFO -   Rule counts: {'epsilon': 7, 'alpha_beta': 31}
+2025-03-22 12:11:49,185 - EvoLRP - INFO -   Rule assignments: ['epsilon', 'epsilon', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'epsilon', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'epsilon', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'epsilon', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'epsilon', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'alpha_beta', 'epsilon', 'alpha_beta']
+2025-03-22 12:11:49,318 - EvoLRP - INFO - Computed optimized relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-22 12:11:49,963 - EvoLRP - INFO - Optimized average_sensitivity scores: tensor([0.7959, 0.8511, 1.2291, 0.7233, 1.2892, 0.9144, 1.0354, 1.3098],
+       device='cuda:0')
+2025-03-22 12:11:49,964 - EvoLRP - INFO - Average optimized average_sensitivity score: 1.0185
+2025-03-22 12:11:50,360 - EvoLRP - INFO - Parameter saving is disabled. Use --save_params to enable.
+2025-03-22 12:11:50,360 - EvoLRP - INFO - Optimization results summary:
+2025-03-22 12:11:50,360 - EvoLRP - INFO -   Initial average average_sensitivity score: 0.5919
+2025-03-22 12:11:50,360 - EvoLRP - INFO -   Optimized average average_sensitivity score: 1.0185
+2025-03-22 12:11:50,360 - EvoLRP - INFO -   Absolute improvement: 0.4266
+2025-03-22 12:11:50,360 - EvoLRP - INFO -   Relative improvement: 72.08%

@@ -1,0 +1,38 @@
+2025-03-21 13:36:08,987 - EvoLRP - INFO - Using device: cuda
+2025-03-21 13:36:09,058 - EvoLRP - INFO - Loaded ImageNet dataset with batch size 8 and subset size 100
+2025-03-21 13:36:09,058 - EvoLRP - INFO - Loading pretrained VGG16 model
+2025-03-21 13:36:10,201 - EvoLRP - INFO - Processed batch of 8 images with labels: [471, 817, 778, 819, 579, 549, 349, 621]
+2025-03-21 13:36:10,205 - EvoLRP - INFO - Model has 38 layers for optimization
+2025-03-21 13:36:10,205 - EvoLRP - INFO - Initialized epsilon parameters: all layers set to epsilon=0.25
+2025-03-21 13:36:10,520 - EvoLRP - INFO - Computed initial relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-21 13:36:10,664 - EvoLRP - INFO - Initial average_sensitivity scores: [np.float64(0.7612024855302634), np.float64(0.04497155147235352), np.float64(0.03296780185009498), np.float64(0.27298526425018743), np.float64(0.7941732733622494), np.float64(0.6266104183617114), np.float64(0.7615307513479901), np.float64(0.7758871100787121)]
+2025-03-21 13:36:10,664 - EvoLRP - INFO - Average initial average_sensitivity score: 0.5088
+(50_w,100)-aCMA-ES (mu_w=27.0,w_1=8%) in dimension 38 (seed=706441, Fri Mar 21 13:36:10 2025)
+2025-03-21 13:36:10,779 - EvoLRP - INFO - Starting optimization with 30 generations
+2025-03-21 13:36:10,779 - EvoLRP - INFO - Using average_sensitivity criterion with weights: mean=0.7, min=0.3
+2025-03-21 13:36:39,220 - EvoLRP - INFO - Generation 1/30
+Iterat #Fevals   function value  axis ratio  sigma  min&max std  t[m:s]
+    1    100 5.864943144588454e-01 1.0e+00 2.90e-01  3e-01  3e-01 0:28.4
+2025-03-21 13:39:05,373 - EvoLRP - INFO - Generation 6/30
+    6    600 5.860517131259719e-01 1.3e+00 4.61e-01  4e-01  5e-01 2:54.6
+2025-03-21 13:41:32,090 - EvoLRP - INFO - Generation 11/30
+   11   1100 5.846505281714685e-01 1.5e+00 5.56e-01  5e-01  6e-01 5:21.3
+2025-03-21 13:43:58,712 - EvoLRP - INFO - Generation 16/30
+   16   1600 5.843921507272355e-01 1.7e+00 6.22e-01  5e-01  7e-01 7:47.9
+2025-03-21 13:46:25,424 - EvoLRP - INFO - Generation 21/30
+   21   2100 5.830341431438660e-01 2.0e+00 5.80e-01  5e-01  7e-01 10:14.6
+2025-03-21 13:48:52,283 - EvoLRP - INFO - Generation 26/30
+   26   2600 5.829996860755040e-01 2.1e+00 5.60e-01  5e-01  7e-01 12:41.5
+2025-03-21 13:50:49,778 - EvoLRP - INFO - Generation 30/30
+   30   3000 5.815481396373872e-01 2.1e+00 5.74e-01  5e-01  7e-01 14:39.0
+2025-03-21 13:50:49,778 - EvoLRP - INFO - Optimization complete
+2025-03-21 13:50:49,778 - EvoLRP - INFO - Constrained epsilon parameters: [0.47073151179842443, 0.4417095283185224, 1.0, 0.183168415410619, 1.0, 0.00741337130893463, 0.8987184113677911, 1.0, 0.6916321084478734, 0.47226614530429284, 0.13985034079455635, 0.9341663149216168, 1.0, 0.05245826350529703, 1.0, 0.8058005117042616, 0.19350849070116505, 0.05446428901699485, 0.06529512104605578, 1.0, 1.0, 0.4167652676022937, 0.5794273294524253, 0.2870660206384812, 0.4092926129896255, 0.887585213455736, 0.0002478482521981462, 0.47213144008979857, 1.0, 1.0, 0.904149515508945, 0.5139919407948351, 0.8322437996665148, 0.9738933678881159, 1.0, 0.3038251314844899, 0.5016343910558771, 0.8774196326045487]
+2025-03-21 13:50:49,817 - EvoLRP - INFO - Computed optimized relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-21 13:50:49,928 - EvoLRP - INFO - Optimized average_sensitivity scores: [np.float64(0.7612135075103986), np.float64(0.04498449966842204), np.float64(0.03310969894278524), np.float64(0.2721034611742009), np.float64(0.7988965534391262), np.float64(0.619607668739251), np.float64(0.7617773939875195), np.float64(0.7733789893147555)]
+2025-03-21 13:50:49,928 - EvoLRP - INFO - Average optimized average_sensitivity score: 0.5081
+2025-03-21 13:50:50,344 - EvoLRP - INFO - Parameter saving is disabled. Use --save_params to enable.
+2025-03-21 13:50:50,344 - EvoLRP - INFO - Optimization results summary:
+2025-03-21 13:50:50,344 - EvoLRP - INFO -   Initial average average_sensitivity score: 0.5088
+2025-03-21 13:50:50,344 - EvoLRP - INFO -   Optimized average average_sensitivity score: 0.5081
+2025-03-21 13:50:50,344 - EvoLRP - INFO -   Absolute improvement: -0.0007
+2025-03-21 13:50:50,344 - EvoLRP - INFO -   Relative improvement: -0.13%

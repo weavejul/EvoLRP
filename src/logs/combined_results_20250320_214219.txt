@@ -1,0 +1,55 @@
+XAI Method Comparison Results - Thu Mar 20 09:42:19 PM CDT 2025 - faithfulness opt
+=====================================
+Running testbank with lrp and sparseness...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  sparseness
+Using: cuda
+
+Warning: All predictions were incorrect in this batch
+6249
+0.5877392740690005
+0.07234192914171501
+
+
+Running testbank with lrp and average_sensitivity...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  average_sensitivity
+Using: cuda
+
+6250
+0.6677299155812655
+0.07364728441258535
+
+
+Running testbank with lrp and faithfulness...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+6250
+nan
+nan
+
+
+All tests completed!

@@ -1,0 +1,14 @@
+Dataset: imagenet
+LRP Rule: gamma
+Criterion: pixel_flipping
+Generations: 30
+Population Size: 100
+Initial Sigma: 0.3
+Initial Value: 0.25
+Mean Weight: 0.8
+Min Weight: 0.2
+Device: cuda
+Batch Size: 8
+Correct Class Only: True
+Subset Size: 100
+Image Size: 224

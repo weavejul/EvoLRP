@@ -1,0 +1,13 @@
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 1.4635564194202424
+Standard deviation: 0.22047530180349087

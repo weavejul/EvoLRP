@@ -16,6 +16,8 @@ from skimage.segmentation import slic
 from captum.attr import LayerAttribution, LayerGradCam, Lime, IntegratedGradients, GuidedGradCam
 from torchvision.models import vgg16, VGG16_Weights
 
+torch.manual_seed(42)
+
 def compare_xai_methods(
     model,
     images,
@@ -25,6 +27,7 @@ def compare_xai_methods(
     optimized_params_ab=None,
     optimized_params_epsilon=None,
     optimized_params_gamma=None,
+    optimized_params_four=None,
     overlay=False,  # New flag to control overlay visualization
     output_labels=None
 ):
@@ -46,7 +49,7 @@ def compare_xai_methods(
     
     # Compute attributions for each method
     with torch.no_grad():
-        lrp_1 = UniformRuleLRP(model, rule_type='alpha_beta', rule_params=optimized_params_ab)
+        lrp_1 = UniformRuleLRP(model, rule_type='epsilon', rule_params=optimized_params_ab)
         lrp_attr_1 = lrp_1.compute_relevance(images[:batch_size], labels[:batch_size])
         attributions[output_labels[0]] = lrp_attr_1.detach().cpu().numpy()
 
@@ -54,9 +57,13 @@ def compare_xai_methods(
         lrp_attr_2 = lrp_2.compute_relevance(images[:batch_size], labels[:batch_size])
         attributions[output_labels[1]] = lrp_attr_2.detach().cpu().numpy()
 
-        lrp_3 = UniformRuleLRP(model, rule_type='gamma', rule_params=optimized_params_gamma)
+        lrp_3 = UniformRuleLRP(model, rule_type='epsilon', rule_params=optimized_params_gamma)
         lrp_attr_3 = lrp_3.compute_relevance(images[:batch_size], labels[:batch_size])
         attributions[output_labels[2]] = lrp_attr_3.detach().cpu().numpy()
+
+        lrp_4 = UniformRuleLRP(model, rule_type='epsilon', rule_params=optimized_params_four)
+        lrp_attr_4 = lrp_4.compute_relevance(images[:batch_size], labels[:batch_size])
+        attributions[output_labels[3]] = lrp_attr_4.detach().cpu().numpy()
     
     for method_name, attr in attributions.items():
        min_val = np.min(attr)
@@ -198,13 +205,14 @@ def main():
     parser = argparse.ArgumentParser(description='Compare different XAI visualization methods')
     parser.add_argument('--model_path', type=str, default='models/mnist_cnn.pth', help='Path to the model')
     parser.add_argument('--output_dir', type=str, default='xai_comparisons', help='Output directory for visualizations')
-    parser.add_argument('--lrp_params_ab', type=str, default='optimized_alphas_in.json', help='Path to the LRP parameters')
-    parser.add_argument('--lrp_params_epsilon', type=str, default='optimized_epsilons_in.json', help='Path to the LRP parameters')
-    parser.add_argument('--lrp_params_gamma', type=str, default='optimized_gammas_in.json', help='Path to the LRP parameters')
+    parser.add_argument('--lrp_params_ab', type=str, default='saved_params/opt_eps_faith.json', help='Path to the LRP parameters')
+    parser.add_argument('--lrp_params_epsilon', type=str, default='saved_params/opt_eps_avgsens.json', help='Path to the LRP parameters')
+    parser.add_argument('--lrp_params_gamma', type=str, default='saved_params/opt_eps_faith.json', help='Path to the LRP parameters')
+    parser.add_argument('--lrp_params_four', type=str, default='saved_params/opt_eps_pf.json', help='Path to the LRP parameters')
     parser.add_argument('--batch_size', type=int, default=5, help='Number of examples to visualize')
     parser.add_argument('--input_dir', type=str, default='/home/neuro/XAIProject/data/ImageNet', help='Input directory for images')
     parser.add_argument('--overlay', action='store_true', help='Overlay heatmaps on original images')
-    parser.add_argument('--output_labels', type=str, default='alpha, epsilon, gamma', help='Path to the labels')
+    parser.add_argument('--output_labels', type=str, default='faithfulness, avg_sensitivity, sparseness, pixel flipping', help='Path to the labels')
     
     args = parser.parse_args()
         
@@ -233,6 +241,9 @@ def main():
     with open(args.lrp_params_gamma, 'r') as f:
         optimized_params_gamma = torch.tensor(json.load(f))
     
+    with open(args.lrp_params_four, 'r') as f:
+        optimized_params_four = torch.tensor(json.load(f))
+
     output_labels = args.output_labels.split(',')
     # Generate visualizations comparing all XAI methods
     compare_xai_methods(
@@ -244,6 +255,7 @@ def main():
         optimized_params_ab=optimized_params_ab,
         optimized_params_epsilon=optimized_params_epsilon,
         optimized_params_gamma=optimized_params_gamma,
+        optimized_params_four=optimized_params_four,
         overlay=args.overlay,
         output_labels=output_labels
     )

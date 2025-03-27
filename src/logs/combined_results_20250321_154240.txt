@@ -1,0 +1,56 @@
+XAI Method Comparison Results - Fri Mar 21 03:42:40 PM CDT 2025 faithfulness opt
+=====================================
+Running testbank with lrp and sparseness...
+================================
+Mode:  uniform_rule
+Rule name:  gamma
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  sparseness
+Using: cuda
+
+Warning: All predictions were incorrect in this batch
+Warning: All predictions were incorrect in this batch
+Number of valid scores: 6248
+Mean score: 0.9037574250382908
+Standard deviation: 0.08627368868327623
+
+
+Running testbank with lrp and average_sensitivity...
+================================
+Mode:  uniform_rule
+Rule name:  gamma
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  average_sensitivity
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.6472411685582248
+Standard deviation: 0.07405035652894805
+
+
+Running testbank with lrp and faithfulness...
+================================
+Mode:  uniform_rule
+Rule name:  gamma
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.00982048786591981
+Standard deviation: 0.106599160677007
+
+
+All tests completed!

@@ -48,7 +48,7 @@ def optimize_lrp_parameters(criterion='sparseness', num_generations=20):
         labels=labels,
         criterion=criterion,
         rule_type=rule_type,
-        num_steps=5 if criterion in ['pixel_flipping', 'average_sensitivity'] else None
+        num_steps=5 if criterion in ['pixel_flipping', 'average_sensitivity'] else None,
     )
     
     # Configure optimizer

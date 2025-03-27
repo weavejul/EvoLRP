@@ -1,0 +1,41 @@
+2025-03-21 12:11:33,810 - EvoLRP - INFO - Using GPU 0
+2025-03-21 12:11:33,810 - EvoLRP - INFO - Running EvoLRP with epsilon rule on imagenet dataset
+2025-03-21 12:11:33,810 - EvoLRP - INFO - Relevance will be calculated for all output neurons
+2025-03-21 12:11:33,810 - EvoLRP - INFO - Using device: cuda
+2025-03-21 12:11:33,871 - EvoLRP - INFO - Loaded ImageNet dataset with batch size 8 and subset size 100
+2025-03-21 12:11:33,871 - EvoLRP - INFO - Loading pretrained VGG16 model
+2025-03-21 12:11:34,954 - EvoLRP - INFO - Processed batch of 8 images with labels: [398, 601, 996, 78, 413, 73, 260, 416]
+2025-03-21 12:11:34,959 - EvoLRP - INFO - Model has 38 layers for optimization
+2025-03-21 12:11:34,959 - EvoLRP - INFO - Initialized epsilon parameters: all layers set to epsilon=0.25
+2025-03-21 12:11:35,238 - EvoLRP - INFO - Computed initial relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-21 12:11:35,272 - EvoLRP - INFO - Initial sparseness scores: [0.5428880453109741, 0.5018966794013977, 0.441265344619751, 0.4916205406188965, 0, 0.5986587405204773, 0.6581409573554993, 0.6082968711853027]
+2025-03-21 12:11:35,272 - EvoLRP - INFO - Average initial sparseness score: 0.4803
+(50_w,100)-aCMA-ES (mu_w=27.0,w_1=8%) in dimension 38 (seed=656728, Fri Mar 21 12:11:35 2025)
+2025-03-21 12:11:35,387 - EvoLRP - INFO - Starting optimization with 30 generations
+2025-03-21 12:11:35,387 - EvoLRP - INFO - Using sparseness criterion with weights: mean=0.7, min=0.3
+2025-03-21 12:11:43,153 - EvoLRP - INFO - Generation 1/30
+Iterat #Fevals   function value  axis ratio  sigma  min&max std  t[m:s]
+    1    100 -4.576179817318916e-01 1.0e+00 3.29e-01  3e-01  3e-01 0:07.8
+2025-03-21 12:12:22,206 - EvoLRP - INFO - Generation 6/30
+    6    600 -4.907533727586269e-01 1.2e+00 1.46e+00  1e+00  2e+00 0:46.8
+2025-03-21 12:13:01,823 - EvoLRP - INFO - Generation 11/30
+   11   1100 -5.252861432731151e-01 1.3e+00 6.11e+00  6e+00  7e+00 1:26.4
+2025-03-21 12:13:41,737 - EvoLRP - INFO - Generation 16/30
+   16   1600 -5.476609356701374e-01 1.5e+00 2.58e+01  2e+01  3e+01 2:06.3
+2025-03-21 12:14:21,769 - EvoLRP - INFO - Generation 21/30
+   21   2100 -5.576070025563240e-01 1.5e+00 8.53e+01  8e+01  1e+02 2:46.4
+2025-03-21 12:15:01,853 - EvoLRP - INFO - Generation 26/30
+   26   2600 -5.612569890916347e-01 1.7e+00 2.85e+02  3e+02  3e+02 3:26.5
+2025-03-21 12:15:33,937 - EvoLRP - INFO - Generation 30/30
+   30   3000 -5.811209388077259e-01 1.8e+00 8.12e+02  7e+02  9e+02 3:58.5
+2025-03-21 12:15:33,937 - EvoLRP - INFO - Optimization complete
+2025-03-21 12:15:33,937 - EvoLRP - INFO - Constrained epsilon parameters: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+2025-03-21 12:15:33,976 - EvoLRP - INFO - Computed optimized relevance maps with shape: torch.Size([8, 3, 224, 224])
+2025-03-21 12:15:33,977 - EvoLRP - INFO - Optimized sparseness scores: [0.7075822353363037, 0.6654574275016785, 0.588594377040863, 0.6465336084365845, 0, 0.677601158618927, 0.768096923828125, 0.727151095867157]
+2025-03-21 12:15:33,977 - EvoLRP - INFO - Average optimized sparseness score: 0.5976
+2025-03-21 12:15:34,493 - EvoLRP - INFO - Parameter saving is disabled. Use --save_params to enable.
+2025-03-21 12:15:34,493 - EvoLRP - INFO - Optimization results summary:
+2025-03-21 12:15:34,494 - EvoLRP - INFO -   Initial average sparseness score: 0.4803
+2025-03-21 12:15:34,494 - EvoLRP - INFO -   Optimized average sparseness score: 0.5976
+2025-03-21 12:15:34,494 - EvoLRP - INFO -   Absolute improvement: 0.1173
+2025-03-21 12:15:34,494 - EvoLRP - INFO -   Relative improvement: 24.42%

@@ -37,12 +37,14 @@ class CMAESOptimizer:
         if bounds is not None:
             lower, upper = bounds
             opts['bounds'] = [lower, upper]
-            
+        
         self.es = cma.CMAEvolutionStrategy(
             x0=init_x,
             sigma0=init_sigma,
             options=opts
         )
+
+
 
     def step(self, fitness_function):
         """
@@ -51,10 +53,11 @@ class CMAESOptimizer:
         Args:
             fitness_function: Function that evaluates solution fitness
         """
+        
         solutions = self.es.ask()
         # Convert tensor scores to Python numbers
         scores = [fitness_function(sol).item() if torch.is_tensor(fitness_function(sol)) else fitness_function(sol) 
-                 for sol in solutions]
+                for sol in solutions]
         self.es.tell(solutions, scores)
 
     def best_solution(self):

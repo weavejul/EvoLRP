@@ -1,0 +1,55 @@
+XAI Method Comparison Results - Thu Mar 20 05:39:11 PM CDT 2025 - faithfulness opt
+=====================================
+Running testbank with lrp and sparseness...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  sparseness
+Using: cuda
+
+6250
+0.6169308574979986
+0.0330037253736235
+
+
+Running testbank with lrp and average_sensitivity...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  average_sensitivity
+Using: cuda
+
+6250
+0.6649181469181336
+0.07449837797035322
+
+
+Running testbank with lrp and faithfulness...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Warning: All predictions were incorrect in this batch
+6249
+0.06537084070253854
+0.019530226224491295
+
+
+./run_testbank.sh: line 44: -r: command not found

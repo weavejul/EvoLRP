@@ -1,0 +1,13 @@
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  LayerGradCam
+Criterion:  faithfulness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.3408679244661331
+Standard deviation: 0.0994359487586462

@@ -1,0 +1,54 @@
+XAI Method Comparison Results - Thu Mar 20 11:40:59 PM CDT 2025 avg sens opt
+=====================================
+Running testbank with lrp and sparseness...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  sparseness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.2825173949057048
+Standard deviation: 0.037182202380403935
+
+
+Running testbank with lrp and average_sensitivity...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  average_sensitivity
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.6299596331756161
+Standard deviation: 0.07760724083319744
+
+
+Running testbank with lrp and faithfulness...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.740195019478798
+Standard deviation: 0.11776200367763297
+
+
+All tests completed!

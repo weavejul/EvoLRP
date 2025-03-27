@@ -4,78 +4,59 @@ from evaluation.evaluation_utils import difference, batch_uniform_noise
 import time
 
 def faithfulness_correlation(relevance_map, model, input_tensor, label, num_steps=5, **kwargs):
-    subset_size = kwargs.get('subset_size', 10)
-    # Prepare shapes. Expand relevance_map if not the same shape
+    torch.manual_seed(42)
+    np.random.seed(42)
+    torch.backends.cudnn.deterministic = True
+    # Prepare shapes. Expand a_batch if not the same shape
     if input_tensor.shape != relevance_map.shape:
-        relevance_map = relevance_map.expand_as(input_tensor)
+        relevance_map = torch.broadcast_to(relevance_map, input_tensor.shape)
 
-    # Flatten the attributions
-    batch_size = input_tensor.shape[0]
-    relevance_map_flat = relevance_map.reshape(batch_size, -1)
-    n_features = relevance_map_flat.shape[-1]
+    # Flatten the attributions.
+    batch_size = relevance_map.shape[0]
+    relevance_map = relevance_map.reshape(batch_size, -1)
+    n_features = relevance_map.shape[-1]
+    
+    subset_size = kwargs.get('subset_size', min(100, n_features//10))
 
-    # Convert label to tensor if it's a scalar
-    if isinstance(label, int) or isinstance(label, float):
-        label = torch.tensor([label] * batch_size, device=input_tensor.device)
-    elif isinstance(label, torch.Tensor) and label.numel() == 1:
-        label = label.expand(batch_size)
-
-    # Predict on input
-    y_pred = model(input_tensor)
-    # Get probabilities for the target labels for each batch item
-    batch_indices = torch.arange(batch_size, device=input_tensor.device)
-    y_pred = torch.softmax(y_pred, dim=1)[batch_indices, label]
+    # Predict on input.
+    y_pred = model(input_tensor)[np.arange(batch_size), label]
 
     pred_deltas = []
     att_sums = []
 
     input_tensor_shape = input_tensor.shape
     # For each test data point, execute a couple of runs.
-    for _ in range(num_steps):
-        # Randomly mask by subset size - using torch instead of numpy
-        rand_indices = []
-        for i in range(batch_size):
-            # Get flattened indices for this specific batch item
-            flat_indices = torch.randperm(n_features)[:subset_size]
-            # Convert to indices that are valid for the specific dimensions of the tensor
-            rand_indices.append(flat_indices)
-        a_ix = torch.stack(rand_indices, dim=0)
-        
+    for i_ix in range(num_steps):
+        # Randomly mask by subset size.
+        a_ix = torch.stack(
+            [torch.randint(0, n_features, (subset_size,)) for _ in range(batch_size)],
+            axis=0,
+        )
         x_perturbed = batch_uniform_noise(
             arr=input_tensor.reshape(batch_size, -1),
             indices=a_ix,
         )
-            
         x_perturbed = x_perturbed.reshape(*input_tensor_shape)
 
-        # check if the perturbed input is the same as the original input
-        if torch.allclose(x_perturbed, input_tensor):
-            print("Perturbed input is the same as the original input")
+        # Check if the perturbation caused change
+        # for x_element, x_perturbed_element in zip(x_batch, x_perturbed):
+        #     warn.warn_perturbation_caused_no_change(x=x_element, x_perturbed=x_perturbed_element)
 
-        # Predict on perturbed input
-        y_pred_perturb = model(x_perturbed)
-        y_pred_perturb = torch.softmax(y_pred_perturb, dim=1)[batch_indices, label]
-        
+        # Predict on perturbed input x.
+        y_pred_perturb = model(x_perturbed)[np.arange(batch_size), label]
         pred_deltas.append(y_pred - y_pred_perturb)
 
-        # Sum attributions of the random subset
-        batch_att_sums = []
-        for i in range(batch_size):
-            batch_att_sums.append(relevance_map_flat[i, a_ix[i]].sum())
-        att_sums.append(torch.tensor(batch_att_sums, device=relevance_map.device))
+        # Sum attributions of the random subset.
+        att_sums.append(relevance_map[torch.arange(batch_size, device=a_ix.device)[:, None], a_ix].sum(axis=-1))
 
-    pred_deltas = torch.stack(pred_deltas, dim=1)  # Shape: [batch_size, num_steps]
-    att_sums = torch.stack(att_sums, dim=1)  # Shape: [batch_size, num_steps]
+    pred_deltas = torch.stack(pred_deltas, axis=1)
+    att_sums = torch.stack(att_sums, axis=1)
 
-    # Calculate difference between attribution sums and prediction deltas
-    similarity = torch.abs(difference(a=att_sums, b=pred_deltas, batched=True))
-    
-    # Take the mean across the steps dimension to get one value per batch item
-    similarity_mean = torch.mean(similarity, dim=1)
+    similarity = torch.abs(difference(a=att_sums, b=pred_deltas))
+    similarity = torch.mean(similarity, dim=1)
+    return similarity
 
-    return similarity_mean
-
-def pixel_flipping(relevance_map, model, input_tensor, label, num_steps=5):
+def pixel_flipping(relevance_map, model, input_tensor, label, num_steps=10):
     """
     Evaluates the faithfulness of LRP explanations using pixel flipping.
 
@@ -137,6 +118,8 @@ def pixel_flipping(relevance_map, model, input_tensor, label, num_steps=5):
         # Calculate scores as probability drop for each batch item
         scores = original_probs - new_probs
         batch_scores.append(scores)
+        
+        input_clone = input_tensor.clone()
     
     # Stack scores across steps and calculate mean for each batch item
     batch_scores = torch.stack(batch_scores)  # Shape: [num_steps, batch_size]

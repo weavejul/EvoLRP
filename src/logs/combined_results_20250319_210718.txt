@@ -1,0 +1,54 @@
+XAI Method Comparison Results - Wed Mar 19 09:07:18 PM CDT 2025
+=====================================
+Running testbank with IntegratedGradients and sparseness...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  IntegratedGradients
+Criterion:  sparseness
+Using: cuda
+
+6250
+0.4812465332004468
+0.03080034720431874
+
+
+Running testbank with IntegratedGradients and average_sensitivity...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  IntegratedGradients
+Criterion:  average_sensitivity
+Using: cuda
+
+6250
+0.6622653055933647
+0.07415449721092228
+
+
+Running testbank with IntegratedGradients and faithfulness...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  IntegratedGradients
+Criterion:  faithfulness
+Using: cuda
+
+6250
+0.07029245885568268
+0.017643120177064417
+
+
+All tests completed!

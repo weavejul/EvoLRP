@@ -1,0 +1,13 @@
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  IntegratedGradients
+Criterion:  faithfulness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.06942994634807044
+Standard deviation: 0.017387478714577433

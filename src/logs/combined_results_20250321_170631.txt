@@ -1,0 +1,55 @@
+XAI Method Comparison Results - Fri Mar 21 05:06:31 PM CDT 2025
+=====================================
+Running testbank with lrp and sparseness...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  sparseness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.5767180308955624
+Standard deviation: 0.06974305505046735
+
+
+Running testbank with lrp and average_sensitivity...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  average_sensitivity
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.6681444598243368
+Standard deviation: 0.0736758368903003
+
+
+Running testbank with lrp and faithfulness...
+================================
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Warning: All predictions were incorrect in this batch
+Number of valid scores: 6249
+Mean score: 0.055656688089379944
+Standard deviation: 0.017356109846937
+
+
+All tests completed!

@@ -1,0 +1,14 @@
+Mode:  uniform_rule
+Rule name:  epsilon
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Warning: All predictions were incorrect in this batch
+Number of valid scores: 6249
+Mean score: 0.055656688089379944
+Standard deviation: 0.017356109846937

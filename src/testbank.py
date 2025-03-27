@@ -24,7 +24,8 @@ warnings.filterwarnings('ignore')
 import os
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128,expandable_segments:True'
 
-def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criterion):
+def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criterion, 
+    attr_model=None, method='lrp', feature_masks=None):
     # x_batch = x_batch.detach().cpu().numpy()
     # y_batch = y_batch.detach().cpu().numpy()
     if criterion == 'sparseness':
@@ -34,7 +35,7 @@ def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criter
     elif criterion == 'pixel_flipping':
         # Calculate pixel flipping score for this image
         batch_scores = pixel_flipping(
-            a_batch,
+            a_batch,  
             model,
             x_batch,
             y_batch,
@@ -48,8 +49,12 @@ def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criter
             x_batch,
             y_batch,
             num_steps=num_steps,
-            baseline=baseline
+            baseline=baseline,
+            attr_model=attr_model,
+            method=method,
+            feature_masks=feature_masks
         )
+        # print(batch_scores)
         # For average_sensitivity, higher AUC is better
     elif criterion == 'faithfulness':
         kwargs = {
@@ -63,6 +68,7 @@ def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criter
             num_steps=num_steps,
             **kwargs
         )
+        # print(batch_scores)
         # higher is better
     else:
         raise ValueError(f"Unknown criterion: {criterion}")
@@ -146,7 +152,7 @@ if __name__ == "__main__":
         "--lrp-params",
         dest="lrp_params",
         help="LRP parameters",
-        default="optimized_alphas_in.json",
+        default="saved_params/opt_eps_pf.json",
         type=str
     )
 
@@ -230,8 +236,11 @@ if __name__ == "__main__":
             print("Warning: All predictions were incorrect in this batch")
             continue
         try:  # Add try-except to handle potential OOM errors gracefully
+            feature_masks = None
+            attr_model = None
             if config.xai_method == "lrp":
                 a_batch = lrp_model.compute_relevance(x, y)
+                attr_model = lrp_model
             elif config.xai_method == "LayerGradCam":
                 gradcam_attr = gradcam.attribute(
                     x,
@@ -243,6 +252,7 @@ if __name__ == "__main__":
                     x.shape[2:],
                     interpolate_mode='bicubic'  # Use bicubic interpolation instead of default
                 )
+                attr_model = gradcam
             elif config.xai_method == "Lime":
                 # Create feature masks for each image in the batch
                 feature_masks = []
@@ -262,6 +272,7 @@ if __name__ == "__main__":
                     perturbations_per_eval=16,
                     show_progress=False
                 )   
+                attr_model = lime
             elif config.xai_method == "IntegratedGradients":
                 a_batch, _ = ig.attribute(
                     x,
@@ -270,12 +281,15 @@ if __name__ == "__main__":
                     method='gausslegendre',
                     return_convergence_delta=True
                 )
+                attr_model = ig
             else:
                 raise ValueError(f"Invalid XAI method: {config.xai_method}")
 
             if x.shape[0] != a_batch.shape[0]:
                 a_batch = a_batch.unsqueeze(0)
-            batch_scores = compute_scores(model, x, y, a_batch, num_steps=5, baseline='zero', criterion=config.criterion)
+            batch_scores = compute_scores(model, x, y, a_batch, num_steps=5, baseline='zero', criterion=config.criterion,
+                attr_model=attr_model, method=config.xai_method, feature_masks=feature_masks
+            )
             if type(batch_scores) == torch.Tensor:
                 batch_scores = batch_scores.detach().cpu().numpy().item()
             if batch_scores is None:

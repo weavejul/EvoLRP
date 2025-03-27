@@ -6,7 +6,7 @@ import argparse
 import json
 from matplotlib.colors import Normalize
 
-from lrp import UniformRuleLRP
+from lrp import UniformRuleLRP, UniformValueLRP
 from models import load_model
 from datasets import get_mnist_data, get_imagenet_data
 from utils import plot_heatmap
@@ -15,6 +15,9 @@ import quantus
 from skimage.segmentation import slic
 from captum.attr import LayerAttribution, LayerGradCam, Lime, IntegratedGradients, GuidedGradCam
 from torchvision.models import vgg16, VGG16_Weights
+import torch
+
+torch.manual_seed(42)
 
 def compare_xai_methods(
     model,
@@ -37,6 +40,17 @@ def compare_xai_methods(
         optimized_params: Parameters for LRP
         overlay: If True, overlay heatmaps on original images instead of showing them separately
     """
+    # Load ImageNet class labels
+    try:
+        import json
+        with open('/home/neuro/XAIProject/data/imagenet_class_index.json') as f:
+            class_idx = json.load(f)
+        idx_to_labels = {int(k): v[1] for k, v in class_idx.items()}
+    except:
+        # Fallback if file not found
+        idx_to_labels = None
+        print("Warning: ImageNet class labels file not found. Using numeric labels only.")
+    
     # Limit number of examples
     batch_size = min(batch_size, len(images))
     
@@ -112,9 +126,10 @@ def compare_xai_methods(
         attributions['IntegratedGradients'] = ig_attr.detach().cpu().numpy()
 
         # LRP
-        lrp = UniformRuleLRP(model, rule_type='alpha_beta', rule_params=optimized_params)
-        lrp_attr = lrp.compute_relevance(images[:batch_size], labels[:batch_size])
-        attributions['URO_LRP'] = lrp_attr.detach().cpu().numpy()
+        # lrp = UniformRuleLRP(model, rule_type='alpha_beta', rule_params=optimized_params)
+        # # lrp = UniformValueLRP(model, rule_types=optimized_params, rule_values={'alpha_beta': 2.0, 'epsilon': 0.25, 'gamma': 0.25, 'zero': 0.0})
+        # lrp_attr = lrp.compute_relevance(images[:batch_size], labels[:batch_size])
+        # attributions['UVO_LRP'] = lrp_attr.detach().cpu().numpy()
     
     # Create visualizations for each example
     for i in range(batch_size):
@@ -139,8 +154,13 @@ def compare_xai_methods(
             img_display = np.clip(img_display, 0, 1)
             
             plt.imshow(img_display)
+        
+        # Get class name if available
+        label_text = f"Label: {labels[i].item()}"
+        if idx_to_labels is not None and labels[i].item() in idx_to_labels:
+            label_text = f"Label: {idx_to_labels[labels[i].item()]}"
             
-        plt.title(f"Input Image (Label: {labels[i].item()})")
+        plt.title(f"Input Image\n{label_text}")
         plt.axis('off')
         
         # Plot each XAI method
@@ -222,8 +242,10 @@ def compare_xai_methods(
                 img_display = np.clip(img_display, 0, 1)
                 
                 plt.imshow(img_display)
-                
-            plt.title(f"Image {i+1}")
+            label_text = f"Label: {labels[i].item()}"
+            if idx_to_labels is not None and labels[i].item() in idx_to_labels:
+                label_text = f"Label: {idx_to_labels[labels[i].item()]}"
+            plt.title(f"Image {i+1}\n{label_text}")
             plt.axis('off')
             
             # Plot each XAI method - place in columns after the original image
@@ -234,12 +256,7 @@ def compare_xai_methods(
                 
                 # Handle different attribution formats
                 if heatmap.ndim == 3:
-                    if heatmap.shape[0] == 3:  # Channel-first format (C, H, W)
-                        heatmap = np.transpose(heatmap, (1, 2, 0))
-                    
-                    # For RGB attributions, use magnitude across channels
-                    if heatmap.shape[-1] == 3:
-                        heatmap = np.linalg.norm(heatmap, axis=2)
+                    heatmap = np.mean(heatmap, axis=0)
                 
                 # Normalize for visualization
                 vmax = max(abs(np.max(heatmap)), abs(np.min(heatmap)))
@@ -289,7 +306,7 @@ def main():
     parser = argparse.ArgumentParser(description='Compare different XAI visualization methods')
     parser.add_argument('--model_path', type=str, default='models/mnist_cnn.pth', help='Path to the model')
     parser.add_argument('--output_dir', type=str, default='xai_comparisons', help='Output directory for visualizations')
-    parser.add_argument('--lrp_params', type=str, default='optimized_alphas_in.json', help='Path to the LRP parameters')
+    parser.add_argument('--lrp_params', type=str, default='saved_params/opt_alpha_faith.json', help='Path to the LRP parameters')
     parser.add_argument('--batch_size', type=int, default=5, help='Number of examples to visualize')
     parser.add_argument('--input_dir', type=str, default='/home/neuro/XAIProject/data/ImageNet', help='Input directory for images')
     parser.add_argument('--overlay', action='store_true', help='Overlay heatmaps on original images')
@@ -313,7 +330,10 @@ def main():
     output_dir.mkdir(exist_ok=True, parents=True)
 
     with open(args.lrp_params, 'r') as f:
-        optimized_params = torch.tensor(json.load(f))
+        if "uvo" in args.lrp_params:
+            optimized_params = json.load(f)
+        else:
+            optimized_params = torch.tensor(json.load(f))
     
     # Generate visualizations comparing all XAI methods
     compare_xai_methods(

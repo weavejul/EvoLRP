@@ -1,0 +1,14 @@
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Traceback (most recent call last):
+  File "/home/neuro/XAIProject/EvoLRP/src/testbank.py", line 283, in <module>
+    attr_model=lrp_model, method=config.xai_method, feature_masks=feature_masks
+NameError: name 'feature_masks' is not defined

@@ -1,0 +1,57 @@
+XAI Method Comparison Results - Fri Mar 21 07:52:03 PM CDT 2025
+=====================================
+Running testbank with lrp and sparseness...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  sparseness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 0.2144088599152281
+Standard deviation: 0.04061293667361804
+
+
+Running testbank with lrp and average_sensitivity...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  average_sensitivity
+Using: cuda
+
+Traceback (most recent call last):
+  File "/home/neuro/XAIProject/EvoLRP/src/testbank.py", line 283, in <module>
+    batch_scores = compute_scores(model, x, y, a_batch, num_steps=5, baseline='zero', criterion=config.criterion,
+  File "/home/neuro/XAIProject/EvoLRP/src/testbank.py", line 46, in compute_scores
+    batch_scores, _ = average_sensitivity(
+TypeError: average_sensitivity() got an unexpected keyword argument 'lrp_model'
+
+
+Running testbank with lrp and faithfulness...
+================================
+Mode:  uniform_rule
+Rule name:  alpha_beta
+Batch size:  8
+Device:  gpu
+Input dir:  /home/neuro/XAIProject/data/ImageNet
+Output dir:  ./output/
+XAI method:  lrp
+Criterion:  faithfulness
+Using: cuda
+
+Number of valid scores: 6250
+Mean score: 1.4635564194202424
+Standard deviation: 0.22047530180349087
+
+
+All tests completed!

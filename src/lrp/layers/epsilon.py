@@ -137,7 +137,19 @@ class EpsilonRule:
         )
         
         # Add small epsilon to stabilize division (maintaining sign)
+        # Using a larger epsilon for stabilization
         stabilized_z = z + epsilon * torch.sign(z)
+        
+        # Compute relevance to propagate backward
+        # Handle potential division by zero or very small values
+        backward_relevance = torch.where(
+            torch.abs(stabilized_z) > 1e-6,
+            relevance / stabilized_z,
+            torch.zeros_like(relevance)
+        )
+        
+        # Check for NaN values and replace them with zeros
+        backward_relevance = torch.nan_to_num(backward_relevance, nan=0.0, posinf=0.0, neginf=0.0)
         
         # Create a function that computes input relevance when given the output relevance
         def grad_fn(grad_output):
@@ -148,14 +160,14 @@ class EpsilonRule:
                 dilation=layer.dilation, groups=layer.groups
             )
         
-        # Compute relevance to propagate backward
-        backward_relevance = relevance / stabilized_z
-        
         # Compute input-level relevance
         input_relevance = grad_fn(backward_relevance)
         
         # Scale by input values to get final relevance
         input_relevance = input_tensor * input_relevance
+        
+        # Final NaN check
+        input_relevance = torch.nan_to_num(input_relevance, nan=0.0, posinf=0.0, neginf=0.0)
         
         return input_relevance
 
@@ -296,7 +308,7 @@ class EpsilonRule:
                 self.forward_info['max_pool_indices'] = indices
         
         # Ensure output size matches input size
-        output_size = self.forward_info['max_pool_input_shape']
+        output_size = input_tensor.shape[2:]
         # Use max_unpool2d for backward propagation
         return torch.nn.functional.max_unpool2d( 
             relevance, indices, kernel_size=layer.kernel_size, stride=layer.stride,

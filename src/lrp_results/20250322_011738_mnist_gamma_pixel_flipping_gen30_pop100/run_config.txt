@@ -1,0 +1,12 @@
+Dataset: mnist
+LRP Rule: gamma
+Criterion: pixel_flipping
+Generations: 30
+Population Size: 100
+Initial Sigma: 0.3
+Initial Value: 1.0
+Mean Weight: 0.8
+Min Weight: 0.2
+Device: cuda
+Batch Size: 8
+Correct Class Only: True

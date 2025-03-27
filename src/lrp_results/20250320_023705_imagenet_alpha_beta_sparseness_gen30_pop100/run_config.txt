@@ -1,0 +1,14 @@
+Dataset: imagenet
+LRP Rule: alpha_beta
+Criterion: sparseness
+Generations: 30
+Population Size: 100
+Initial Sigma: 0.3
+Initial Value: 2.0
+Mean Weight: 0.7
+Min Weight: 0.3
+Device: cuda
+Batch Size: 8
+Correct Class Only: True
+Subset Size: 100
+Image Size: 224

@@ -12,11 +12,11 @@ from pathlib import Path
 from datetime import datetime
 
 # Project-specific imports
-from optim import CMAESOptimizer
+from optim import CMAESOptimizer, CMAMOESOptimizer
 from evaluation import pixel_flipping, average_sensitivity, sparseness, create_fitness_function, faithfulness_correlation
 from datasets import get_mnist_data, get_imagenet_data
 from models import load_model
-from lrp import UniformRuleLRP
+from lrp import UniformRuleLRP, UniformValueLRP
 from utils import plot_heatmap
 
 # Set up logging
@@ -34,6 +34,13 @@ AVAILABLE_CRITERIA = ['sparseness', 'pixel_flipping', 'average_sensitivity', 'fa
 AVAILABLE_DEVICES = ['cpu', 'cuda', 'mps']
 AVAILABLE_BASELINES = ['zero', 'mean']
 AVAILABLE_OPTIMIZATION_TYPES = ['UniformRule', 'UniformValue', 'UniformLayer', 'CompositeRV']
+
+# Default values for uniform layer rules
+DEFAULT_RULE_VALUES = {
+    'alpha_beta': 2.0,  # Default alpha value (beta is alpha-1)
+    'epsilon': 0.25,     # Default epsilon value
+    'gamma': 0.25       # Default gamma value
+}
 
 def parse_arguments():
     """Parse command line arguments for the EvoLRP framework."""
@@ -56,13 +63,26 @@ def parse_arguments():
     parser.add_argument('--image_size', type=int, default=224,
                         help='Image size for ImageNet preprocessing (resize)')
     
-    # LRP rule configuration
+    # Optimization type configuration
+    parser.add_argument('--optimization_type', type=str, default='UniformRule', choices=AVAILABLE_OPTIMIZATION_TYPES,
+                        help=f'Type of optimization to perform: {", ".join(AVAILABLE_OPTIMIZATION_TYPES)}')
+    parser.add_argument('--correct_class_only', action='store_true',
+                        help='Calculate relevance only for the correct class instead of all logits')
+
+        
+    # LRP uniform rule configuration
     parser.add_argument('--rule', type=str, default='alpha_beta', choices=AVAILABLE_RULES,
                         help=f'LRP rule type: {", ".join(AVAILABLE_RULES)}')
     parser.add_argument('--init_value', type=float, default=0.25,
                         help='Initial value for all rule parameters')
-    parser.add_argument('--correct_class_only', action='store_true',
-                        help='Calculate relevance only for the correct class instead of all logits')
+
+    # LRP uniform value base values
+    parser.add_argument('--alpha_beta_base', type=float, default=DEFAULT_RULE_VALUES['alpha_beta'],
+                        help='Base value for alpha-beta rule (alpha value, beta is alpha-1)')
+    parser.add_argument('--epsilon_base', type=float, default=DEFAULT_RULE_VALUES['epsilon'],
+                        help='Base value for epsilon rule')
+    parser.add_argument('--gamma_base', type=float, default=DEFAULT_RULE_VALUES['gamma'],
+                        help='Base value for gamma rule')
     
     # Optimization parameters
     parser.add_argument('--criterion', type=str, default='sparseness', choices=AVAILABLE_CRITERIA,
@@ -75,10 +95,12 @@ def parse_arguments():
                         help='Initial sigma for CMA-ES optimizer')
     parser.add_argument('--patience', type=int, default=10,
                         help='Early stopping patience (generations)')
-    parser.add_argument('--mean_weight', type=float, default=0.7,
+    parser.add_argument('--mean_weight', type=float, default=0.8,
                         help='Weight for mean score in fitness function')
-    parser.add_argument('--min_weight', type=float, default=0.3,
+    parser.add_argument('--min_weight', type=float, default=0.2,
                         help='Weight for minimum score in fitness function')
+    parser.add_argument('--multi_opt', action='store_true',
+                        help='Use multi-objective optimization')
     
     # Evaluation parameters
     parser.add_argument('--num_steps', type=int, default=5,
@@ -106,6 +128,14 @@ def parse_arguments():
     
     # Parse the arguments
     args = parser.parse_args()
+    
+    # Update global rule values based on command line arguments
+    global RULE_VALUES
+    RULE_VALUES = {
+        'alpha_beta': args.alpha_beta_base,
+        'epsilon': args.epsilon_base,
+        'gamma': args.gamma_base
+    }
     
     # Validate arguments
     if args.mean_weight + args.min_weight != 1.0:
@@ -264,34 +294,64 @@ def initialize_parameters(args, num_layers):
     """Initialize LRP rule parameters."""
     rule_type = args.rule
     init_value = args.init_value
+    optimization_type = args.optimization_type
     
-    if rule_type == 'alpha_beta':
-        # For alpha-beta rule, all layers start with the same alpha value
-        initial_params = torch.ones(num_layers) * init_value
-        logger.info(f"Initialized alpha-beta parameters: all layers set to alpha={init_value}")
+    if optimization_type == 'UniformRule':
+        # For UniformRuleLRP: every layer uses the same rule type with different parameters
+        if rule_type == 'alpha_beta':
+            # For alpha-beta rule, all layers start with the same alpha value
+            initial_params = torch.ones(num_layers) * init_value
+            logger.info(f"Initialized alpha-beta parameters: all layers set to alpha={init_value}")
+            
+        elif rule_type == 'epsilon':
+            # For epsilon rule, all layers start with the same epsilon fraction
+            initial_params = torch.ones(num_layers) * init_value
+            logger.info(f"Initialized epsilon parameters: all layers set to epsilon={init_value}")
+            
+        elif rule_type == 'gamma':
+            # For gamma rule, all layers start with the same gamma value
+            initial_params = torch.ones(num_layers) * init_value
+            logger.info(f"Initialized gamma parameters: all layers set to gamma={init_value}")
+            
+        else:
+            logger.error(f"Unsupported rule type: {rule_type}")
+            sys.exit(1)
+            
+        return initial_params, rule_type, None
         
-    elif rule_type == 'epsilon':
-        # For epsilon rule, all layers start with the same epsilon fraction
-        initial_params = torch.ones(num_layers) * init_value
-        logger.info(f"Initialized epsilon parameters: all layers set to epsilon={init_value}")
+    elif optimization_type == 'UniformValue':
+        # For UniformValueLRP: layers can have different rule types, but same rule type shares parameter value
+        # Start with all layers using the default rule type
+        initial_rule_types = [rule_type] * num_layers
         
-    elif rule_type == 'gamma':
-        # For gamma rule, all layers start with the same gamma value
-        initial_params = torch.ones(num_layers) * init_value
-        logger.info(f"Initialized gamma parameters: all layers set to gamma={init_value}")
+        logger.info(f"Initialized for UniformValue optimization:")
+        logger.info(f"  Initial rule types: all layers set to {rule_type}")
+        logger.info(f"  Rule values: {RULE_VALUES}")
         
+        return initial_rule_types, rule_type, RULE_VALUES
+    
     else:
-        logger.error(f"Unsupported rule type: {rule_type}")
+        logger.error(f"Unsupported optimization type: {optimization_type}")
         sys.exit(1)
-    
-    return initial_params, rule_type
         
 def evaluate_initial_relevance(model, images, labels, rule_type, initial_params, args):
     """Compute and evaluate initial relevance maps."""
     try:
-        # Create initial LRP instance
-        lrp_initial = UniformRuleLRP(model, rule_type=rule_type, rule_params=initial_params, 
-                                   correct_class_only=args.correct_class_only)
+        optimization_type = args.optimization_type
+        
+        # Create initial LRP instance based on optimization type
+        if optimization_type == 'UniformRule':
+            # For UniformRuleLRP, initial_params is a tensor of parameter values
+            lrp_initial = UniformRuleLRP(model, rule_type=rule_type, rule_params=initial_params, 
+                                       correct_class_only=args.correct_class_only)
+        elif optimization_type == 'UniformValue':
+            # For UniformValueLRP, initial_params is a list of rule types
+            
+            lrp_initial = UniformValueLRP(model, rule_types=initial_params, rule_values=RULE_VALUES,
+                                        correct_class_only=args.correct_class_only)
+        else:
+            logger.error(f"Unsupported optimization type: {optimization_type}")
+            raise ValueError(f"Unsupported optimization type: {optimization_type}")
         
         # Compute initial relevance map
         with torch.no_grad():
@@ -308,7 +368,7 @@ def evaluate_initial_relevance(model, images, labels, rule_type, initial_params,
             elif args.criterion == 'average_sensitivity':
                 initial_scores, _ = average_sensitivity(
                     initial_relevance, model, images, labels, 
-                    num_steps=args.num_steps, baseline=args.baseline
+                    num_steps=args.num_steps, baseline=args.baseline, attr_model=lrp_initial, method='lrp'
                 )
             elif args.criterion == 'faithfulness':
                 initial_scores = faithfulness_correlation(
@@ -374,7 +434,7 @@ def visualize_initial_results(images, initial_relevance, initial_scores, labels,
 def run_optimization(model, images, labels, rule_type, initial_params, args):
     """Run optimization process for LRP parameters."""
     try:
-        # Create fitness function
+        # Create fitness function with proper parameters
         weights = (args.mean_weight, args.min_weight)
         fitness_function = create_fitness_function(
             model=model,
@@ -385,14 +445,26 @@ def run_optimization(model, images, labels, rule_type, initial_params, args):
             weights=weights,
             baseline=args.baseline,
             num_steps=args.num_steps,
-            correct_class_only=args.correct_class_only
+            correct_class_only=args.correct_class_only,
+            optimization_type=args.optimization_type,
         )
+        
+        num_params = None
+        # Determine number of parameters to optimize
+        if args.optimization_type == 'UniformRule':
+            # For UniformRuleLRP: optimize one parameter per layer
+            num_params = len(initial_params)
+        elif args.optimization_type == 'UniformValue':
+            # For UniformValueLRP: optimize rule type selection for each layer
+            num_params = len(initial_params)
+        else:
+            raise ValueError(f"Unsupported optimization type: {args.optimization_type}")
         
         # Configure CMA-ES optimizer
         optimizer = CMAESOptimizer(
-            num_params=len(initial_params), 
+            num_params=num_params, 
             init_sigma=args.init_sigma,
-            population_size=args.population_size
+            population_size=args.population_size,
         )
         
         # Track parameters and fitness over generations
@@ -415,7 +487,10 @@ def run_optimization(model, images, labels, rule_type, initial_params, args):
                 
             # Track best parameters and fitness
             best_params = optimizer.best_solution()
-            best_fitness = -optimizer.es.result.fbest  # Negate back to positive
+            if args.criterion == 'average_sensitivity':
+                best_fitness = optimizer.es.result.fbest  # es.result not implemented
+            else:
+                best_fitness = -optimizer.es.result.fbest  # Negate back to positive
             all_params.append(best_params.copy())
             all_fitness.append(best_fitness)
             
@@ -437,49 +512,186 @@ def run_optimization(model, images, labels, rule_type, initial_params, args):
         logger.error(f"Error during optimization: {e}")
         raise
 
-def constrain_parameters(best_params, rule_type):
+def run_optimization_multi(model, images, labels, rule_type, initial_params, args):
+    """Run optimization process for LRP parameters."""
+    try:
+        # Create fitness function with proper parameters
+        weights = (args.mean_weight, args.min_weight)
+        fitness_function1 = create_fitness_function(
+            model=model,
+            images=images,
+            labels=labels,
+            criterion="sparseness",
+            rule_type=rule_type,
+            weights=weights,
+            baseline=args.baseline,
+            num_steps=args.num_steps,
+            correct_class_only=args.correct_class_only,
+            optimization_type=args.optimization_type,
+        )
+        
+        fitness_function2 = create_fitness_function(
+            model=model,
+            images=images,
+            labels=labels,
+            criterion="pixel_flipping",
+            rule_type=rule_type,
+            weights=weights,
+            baseline=args.baseline,
+            num_steps=args.num_steps,
+            correct_class_only=args.correct_class_only,
+            optimization_type=args.optimization_type,
+        )
+
+        num_params = None
+        # Determine number of parameters to optimize
+        if args.optimization_type == 'UniformRule':
+            # For UniformRuleLRP: optimize one parameter per layer
+            num_params = len(initial_params)
+        elif args.optimization_type == 'UniformValue':
+            # For UniformValueLRP: optimize rule type selection for each layer
+            num_params = len(initial_params)
+        else:
+            raise ValueError(f"Unsupported optimization type: {args.optimization_type}")
+        
+        # Configure CMA-ES optimizer
+        optimizer = CMAMOESOptimizer(
+            num_params=num_params, 
+            init_sigma=args.init_sigma,
+            population_size=args.population_size,
+        )
+
+        # Track parameters and fitness over generations
+        all_params = []
+        all_fitness = []
+        best_fitness_so_far = -float('inf')
+        no_improvement = 0
+        
+        # Run optimization
+        logger.info(f"Starting optimization with {args.generations} generations")
+        logger.info(f"Using {args.criterion} criterion with weights: mean={args.mean_weight}, min={args.min_weight}")
+        
+        for gen in range(args.generations):
+            optimizer.step(fitness_function1, fitness_function2)
+            
+            # Print status periodically
+            if gen % 5 == 0 or gen == args.generations - 1:
+                logger.info(f"Generation {gen+1}/{args.generations}")
+                optimizer.es.disp()
+                
+            # Track best parameters and fitness
+            best_params = optimizer.best_solution()
+            if args.criterion == 'average_sensitivity':
+                best_fitness = optimizer.es.best_hypervolume_pareto_front  # Negate back to positive
+            else:
+                best_fitness = -optimizer.es.best_hypervolume_pareto_front  #not implemented result
+            all_params.append(best_params)
+            all_fitness.append(best_fitness)
+            
+            # Early stopping check
+            if best_fitness > best_fitness_so_far:
+                best_fitness_so_far = best_fitness
+                no_improvement = 0
+            else:
+                no_improvement += 1
+                
+            if no_improvement >= args.patience:
+                logger.info(f"Early stopping at generation {gen+1} due to no improvement for {args.patience} generations")
+                break
+        
+        logger.info("Optimization complete")
+        return optimizer.best_solution(), all_params, all_fitness
+        
+    except Exception as e:
+        logger.error(f"Error during optimization: {e}")
+        raise
+
+def constrain_parameters(best_params, rule_type, args):
     """Apply constraints to best parameters based on rule type."""
-    constrained_best = []
     
-    if rule_type == 'alpha_beta':
-        # Apply constraints to get actual alpha values
-        for i, p in enumerate(best_params):
-            # Minimum alpha value
-            min_val = 1.0
-            # Constrain parameter with minimum
-            constrained_best.append(max(min_val, abs(p) + 1.0))
-                
-        constrained_best = torch.tensor(constrained_best)
-        logger.info(f"Constrained alpha parameters: {constrained_best.tolist()}")
-        logger.info(f"Corresponding beta parameters: {(constrained_best - 1.0).tolist()}")
+    if args.optimization_type == 'UniformRule':
+        # Original behavior for UniformRuleLRP
+        constrained_best = []
         
-    elif rule_type == 'epsilon':
-        # For epsilon rule, ensure values are positive and reasonable
-        for i, p in enumerate(best_params):
-            # Epsilon must be positive
-            constrained_best.append(min(1.0, abs(p))) # max(0.01, abs(p))
-                
-        constrained_best = torch.tensor(constrained_best)
-        logger.info(f"Constrained epsilon parameters: {constrained_best.tolist()}")
-    
-    elif rule_type == 'gamma':
-        # For gamma rule, ensure values are positive
-        # Values < 1 flatten the distribution, values > 1 sharpen it
-        for i, p in enumerate(best_params):
-            # Gamma should be positive and have a reasonable range
-            constrained_best.append(max(0.1, min(5.0, abs(p))))
-                
-        constrained_best = torch.tensor(constrained_best)
-        logger.info(f"Constrained gamma parameters: {constrained_best.tolist()}")
-    
-    return constrained_best
+        if rule_type == 'alpha_beta':
+            # Apply constraints to get actual alpha values
+            for i, p in enumerate(best_params):
+                # Minimum alpha value
+                min_val = 1.0
+                # Constrain parameter with minimum
+                constrained_best.append(max(min_val, abs(p) + 1.0))
+                    
+            constrained_best = torch.tensor(constrained_best)
+            logger.info(f"Constrained alpha parameters: {constrained_best.tolist()}")
+            logger.info(f"Corresponding beta parameters: {(constrained_best - 1.0).tolist()}")
+            
+        elif rule_type == 'epsilon':
+            # For epsilon rule, ensure values are positive and reasonable
+            for i, p in enumerate(best_params):
+                # Epsilon must be positive
+                constrained_best.append(min(1.0, abs(p))) # max(0.01, abs(p))
+                    
+            constrained_best = torch.tensor(constrained_best)
+            logger.info(f"Constrained epsilon parameters: {constrained_best.tolist()}")
         
+        elif rule_type == 'gamma':
+            # For gamma rule, ensure values are positive
+            # Values < 1 flatten the distribution, values > 1 sharpen it
+            for i, p in enumerate(best_params):
+                # Gamma should be positive and have a reasonable range
+                constrained_best.append(max(0.1, min(3.0, abs(p))))
+                    
+            constrained_best = torch.tensor(constrained_best)
+            logger.info(f"Constrained gamma parameters: {constrained_best.tolist()}")
+        
+        return constrained_best
+        
+    elif args.optimization_type == 'UniformValue':
+        # For UniformValueLRP, best_params determines the rule type for each layer
+        rule_mapping = {
+            0: 'alpha_beta',
+            1: 'epsilon',
+            2: 'gamma'
+        }
+        
+        # Convert continuous parameters to rule type assignments
+        rule_types = []
+        for i, p in enumerate(best_params):
+            # Map the continuous parameter to one of the three rule types
+            rule_index = int(abs(p) % 3)
+            rule_types.append(rule_mapping[rule_index])
+        
+        # Count frequency of each rule type
+        rule_counts = {rule: rule_types.count(rule) for rule in set(rule_types)}
+        
+        logger.info(f"Optimized rule type assignments:")
+        logger.info(f"  Rule counts: {rule_counts}")
+        logger.info(f"  Rule assignments: {rule_types}")
+        
+        # Return both rule types and rule values
+        return {
+            'rule_types': rule_types,
+            'rule_values': RULE_VALUES
+        }
+    
+    else:
+        raise ValueError(f"Unsupported optimization type: {args.optimization_type}")
+
 def evaluate_optimized_relevance(model, images, labels, rule_type, constrained_best, args):
     """Compute and evaluate optimized relevance maps."""
     try:
-        # Create LRP with optimized parameters
-        lrp_best = UniformRuleLRP(model, rule_type=rule_type, rule_params=constrained_best, 
-                               correct_class_only=args.correct_class_only)
+        # Create LRP with optimized parameters based on optimization type
+        if args.optimization_type == 'UniformRule':
+            # For UniformRuleLRP, constrained_best is a tensor of parameters
+            lrp_best = UniformRuleLRP(model, rule_type=rule_type, rule_params=constrained_best, 
+                                  correct_class_only=args.correct_class_only)
+        elif args.optimization_type == 'UniformValue':
+            # For UniformValueLRP, constrained_best is a dict with rule_types and rule_values
+            lrp_best = UniformValueLRP(model, rule_types=constrained_best['rule_types'], 
+                                    rule_values=constrained_best['rule_values'],
+                                    correct_class_only=args.correct_class_only)
+        else:
+            raise ValueError(f"Unsupported optimization type: {args.optimization_type}")
         
         # Compute optimized relevance map
         with torch.no_grad():
@@ -496,7 +708,7 @@ def evaluate_optimized_relevance(model, images, labels, rule_type, constrained_b
             elif args.criterion == 'average_sensitivity':
                 optimized_scores, _ = average_sensitivity(
                     best_relevance, model, images, labels, 
-                    num_steps=args.num_steps, baseline=args.baseline
+                    num_steps=args.num_steps, baseline=args.baseline, attr_model=lrp_best
                 )
             elif args.criterion == 'faithfulness':
                 optimized_scores = faithfulness_correlation(
@@ -612,22 +824,51 @@ def visualize_evolution(all_params, all_fitness, initial_params, rule_type, args
         logger.error("Continuing without visualization.")
 
 def save_parameters(constrained_best, rule_type, args):
-    """Save optimized parameters to JSON file."""
+    """Save optimized parameters to a JSON file."""
     if not args.save_params:
+        logger.info("Parameter saving is disabled. Use --save_params to enable.")
         return
         
     try:
-        # Create output filename
-        timestamp = Path(args.output_dir) / f"optimized_{rule_type}_{args.criterion}_{args.dataset}.json"
+        # Create output directory if it doesn't exist
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         
-        # Prepare data to save
-        params_data = {
-            "rule_type": rule_type,
-            "criterion": args.criterion,
-            "dataset": args.dataset,
-            "correct_class_only": args.correct_class_only,
-            "parameters": constrained_best.tolist()
-        }
+        # Create output filename with appropriate prefix based on optimization type
+        prefix = "UR_" if args.optimization_type == 'UniformRule' else "UL_"
+        
+        # For UniformRule, use different filename based on rule type
+        if args.optimization_type == 'UniformRule':
+            if rule_type == 'alpha_beta':
+                suffix = "alphas"
+            elif rule_type == 'epsilon':
+                suffix = "epsilons"
+            elif rule_type == 'gamma':
+                suffix = "gammas"
+            else:
+                suffix = "params"
+                
+            timestamp = Path(args.output_dir) / f"{prefix}{suffix}_{args.criterion}_{args.dataset}.json"
+            
+            # Prepare data to save
+            params_data = {
+                "rule_type": rule_type,
+                "criterion": args.criterion,
+                "dataset": args.dataset,
+                "correct_class_only": args.correct_class_only,
+                "parameters": constrained_best.tolist()
+            }
+        else:  # UniformValue
+            timestamp = Path(args.output_dir) / f"{prefix}rules_{args.criterion}_{args.dataset}.json"
+            
+            # Prepare data to save for UniformValue
+            params_data = {
+                "optimization_type": args.optimization_type,
+                "criterion": args.criterion,
+                "dataset": args.dataset,
+                "correct_class_only": args.correct_class_only,
+                "rule_types": constrained_best['rule_types'],
+                "rule_values": {k: float(v) for k, v in constrained_best['rule_values'].items()}
+            }
         
         # Save to file
         with open(timestamp, 'w') as f:
@@ -657,11 +898,11 @@ def main():
         num_layers = count_layers(model, args.dataset)
         
         # Initialize parameters
-        initial_params, rule_type = initialize_parameters(args, num_layers)
+        initial_rule_types, rule_type, rule_values = initialize_parameters(args, num_layers)
         
         # Evaluate initial relevance
         initial_relevance, initial_scores = evaluate_initial_relevance(
-            model, images, labels, rule_type, initial_params, args
+            model, images, labels, rule_type, initial_rule_types, args
         )
         
         # Visualize initial results
@@ -670,12 +911,17 @@ def main():
         )
         
         # Run optimization
-        best_params, all_params, all_fitness = run_optimization(
-            model, images, labels, rule_type, initial_params, args
-        )
+        if args.multi_opt:
+            best_params, all_params, all_fitness = run_optimization_multi(
+                model, images, labels, rule_type, initial_rule_types, args
+            )
+        else:
+            best_params, all_params, all_fitness = run_optimization(
+                model, images, labels, rule_type, initial_rule_types, args
+            )
         
         # Apply constraints to optimized parameters
-        constrained_best = constrain_parameters(best_params, rule_type)
+        constrained_best = constrain_parameters(best_params, rule_type, args)
         
         # Evaluate optimized relevance
         best_relevance, optimized_scores = evaluate_optimized_relevance(
@@ -689,7 +935,7 @@ def main():
         )
         
         # Visualize evolution
-        visualize_evolution(all_params, all_fitness, initial_params, rule_type, args)
+        visualize_evolution(all_params, all_fitness, initial_rule_types, rule_type, args)
         
         # Save parameters
         save_parameters(constrained_best, rule_type, args)

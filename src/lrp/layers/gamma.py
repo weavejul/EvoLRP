@@ -129,7 +129,13 @@ class GammaRule:
         stabilized_z = z + self.eps * torch.sign(z)
         
         # Compute relevance to propagate backward
-        backward_relevance = relevance / stabilized_z
+        backward_relevance = torch.where(
+            torch.abs(stabilized_z) > 1e-6,
+            relevance / stabilized_z,
+            torch.zeros_like(relevance)
+        )
+        
+        backward_relevance = torch.nan_to_num(backward_relevance, nan=0.0, posinf=0.0, neginf=0.0)
         
         # Create a function that computes input relevance when given the output relevance
         def grad_fn(grad_output):
