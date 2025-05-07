@@ -61,6 +61,8 @@ def average_sensitivity(relevance_map, model, input_tensor, label, num_steps=20,
                 baselines=0,
                 method='gausslegendre',
                 return_convergence_delta=False)
+        elif method == 'LRP':
+            perturbed_relevance = attr_model.attribute(perturbed_input, target=label)
         else:
             # Assuming compute_relevance can handle batches
             perturbed_relevance = attr_model.compute_relevance(perturbed_input, label)

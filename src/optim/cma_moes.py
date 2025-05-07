@@ -5,7 +5,7 @@ import torch
 
 class CMAMOESOptimizer:
     def __init__(self, num_params, init_sigma=0.5, population_size=20, 
-                 init_x=None, bounds=None, maxiter=100, tolx=1e-12, tolfun=1e-12, multi_opt=False):
+                 init_x=None, bounds=None, maxiter=100, tolx=1e-12, tolfun=1e-12, metrics=["sparseness","faithfulness"]):
         """
         CMA-ES optimizer for LRP parameter optimization.
 
@@ -20,7 +20,8 @@ class CMAMOESOptimizer:
             tolfun: Tolerance on function value changes
         """
         self.num_params = num_params
-        num_kernels = 5
+        num_kernels = 10
+        self.metrics = metrics
         
         # Set up initial solution
         if init_x is None:
@@ -46,7 +47,7 @@ class CMAMOESOptimizer:
         )
         self.es = comocma.Sofomore(
             self.solvers, 
-            reference_point=[0, 0],  # TODO: Worst case acceptable objective values?
+            reference_point=[-0, -0],  
         )
     
 
@@ -57,6 +58,15 @@ class CMAMOESOptimizer:
         Args:
             fitness_function: Function that evaluates solution fitness
         """
+        original_fitness_function2 = fitness_function2
+
+        if self.metrics[1] == "faithfulness":
+            min_val = -1.0  # Replace with your actual minimum value
+            
+            # Negate and normalize to be between -1 and 0
+            fitness_function2 = lambda x: -original_fitness_function2(x) / min_val
+        elif self.metrics[1] == "average_sensitivity":
+            fitness_function2 = lambda x: -(1-original_fitness_function2(x))
         combined_fitness = comocma.FitFun(fitness_function1, fitness_function2)
         solutions = self.es.ask()
         
@@ -75,36 +85,35 @@ class CMAMOESOptimizer:
         2. Return a knee point on the Pareto front
         3. Return a solution with balanced objectives
         """
-        # Check if we're using multi-objective optimization
-        if hasattr(self.es, 'pareto_front') and self.es.pareto_front is not None:
-            # If we have a Pareto front, we need to select one solution
-            if len(self.es.pareto_front) == 0:
-                # If Pareto front is empty, return a random solution
-                return self.es.ask()[0]
+        # Check if we have solutions in the Pareto front
+        if hasattr(self.es, 'pareto_set_cut') and len(self.es.pareto_set_cut) > 0:
+            # Get the Pareto front solutions and their fitness values
+            pareto_solutions = self.es.pareto_set_cut
+            pareto_fitness = self.es.pareto_front_cut
             
-            # Option 1: Return the solution with highest hypervolume contribution
-            # This is often a good compromise solution
-            if hasattr(self.es, 'best_hypervolume_solution'):
-                return self.es.best_hypervolume_solution
+            # You can analyze or visualize the Pareto front
+            # For example, plot the Pareto front
+            # import matplotlib.pyplot as plt
+            # plt.figure()
+            # plt.scatter([f[0] for f in pareto_fitness], [f[1] for f in pareto_fitness])
+            # plt.xlabel('Objective 1')
+            # plt.ylabel('Objective 2')
+            # plt.title('Pareto Front')
+            # plt.grid(True)
+            # plt.show()
+            # For negative metrics, find the solution closest to [-1000, -1000]
+            # This prioritizes solutions that are strongly negative in both objectives
+            target_point = np.array([-1000, -1000])
+            distances = np.sqrt(np.sum(np.square(pareto_fitness - target_point), axis=1))
+            best_idx = np.argmin(distances)
             
-            # Option 2: Return the first solution in the Pareto front
-            # This is a simple fallback
-            return self.es.pareto_front[0][0]  # [0][0] because pareto_front contains [solution, fitness] pairs
+            return pareto_solutions[best_idx]
         
-        # For single-objective optimization or if no Pareto front is available
-        # Try different attributes that might contain the best solution
-        # if hasattr(self.es, 'result') and hasattr(self.es.result, 'xbest'):
-        #     return self.es.result.xbest
-        if hasattr(self.es, 'xbest'):
-            return self.es.xbest
-        elif hasattr(self.es, 'best_solution'):
-            return self.es.best_solution
-        
-        # If we can't find a best solution attribute, return the best from the current population
-        # This is a fallback option
+        # If no Pareto front is available yet, return the best solution from the current population
         solutions = self.es.ask()
         if solutions:
-            return solutions[0]  # Just return the first solution as a fallback
+            # We don't have fitness values here, so just return the first solution
+            return solutions[0]
         
         # If all else fails, return None
         return None

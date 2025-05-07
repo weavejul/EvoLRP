@@ -23,9 +23,10 @@ def get_imagenet_data(config):
     std = [0.229, 0.224, 0.225]
     
     # Create transformation pipeline
+    resize_dim = config.resize
     transform = transforms.Compose([
-        transforms.Resize(224),
-        transforms.CenterCrop(224),
+        transforms.Resize(resize_dim),
+        transforms.CenterCrop(resize_dim),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)
     ])

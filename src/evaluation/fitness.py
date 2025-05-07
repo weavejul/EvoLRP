@@ -3,8 +3,9 @@ import numpy as np
 from .complexity import sparseness
 from .faithfulness import pixel_flipping, faithfulness_correlation
 from .robustness import average_sensitivity
-from lrp import UniformRuleLRP, UniformValueLRP
+from lrp import UniformRuleLRP, UniformValueLRP, UniformLayerLRP
 import traceback
+import itertools
 
 def create_fitness_function(model, images, labels=None, criterion='sparseness', rule_type='alpha_beta', 
                           weights=(0.7, 0.3), baseline='zero', num_steps=5, correct_class_only=False,
@@ -22,7 +23,7 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
         baseline: Baseline for average_sensitivity ('zero' or 'mean')
         num_steps: Number of steps for pixel_flipping and average_sensitivity
         correct_class_only: If True, calculate relevance only for the correct class
-        optimization_type: Type of optimization to perform ('UniformRule' or 'UniformValue')
+        optimization_type: Type of optimization to perform ('UniformRule', 'UniformValue', or 'UniformLayer')
     
     Returns:
         Function that takes a parameter set and returns a fitness score
@@ -38,9 +39,9 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
     # Get initial default rule values
     default_rule_values = {
         'alpha_beta': 2.0, 
-        'epsilon': 0.1,
-        'gamma': 1.0,
-        'zero': 0.0
+        'epsilon': 0.25,
+        # 'gamma': 1.0,
+        'zero': 0.0  # Zero rule doesn't use a parameter value
     }
     
     # Get number of layers in the model
@@ -50,13 +51,144 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
     if hasattr(model, 'classifier'):
         num_layers += len(list(model.classifier))
     
+    # For UniformLayerLRP, identify the unique layer types in the model
+    layer_types = set()
+    if optimization_type == 'UniformLayer':
+        # Collect all layer types in the model
+        if hasattr(model, 'features'):
+            for layer in model.features:
+                layer_types.add(layer.__class__.__name__)
+        if hasattr(model, 'classifier'):
+            for layer in model.classifier:
+                layer_types.add(layer.__class__.__name__)
+        
+        print(f"Detected layer types: {layer_types}")
+        
+        # Dictionary of layer type to possible rule combinations
+        # For most layer types, consider the basic rule types
+        # Some layer types like BatchNorm2d might only need simpler rules
+        layer_rule_possibilities = {
+            layer_type: ['alpha_beta', 'epsilon', 'zero'] 
+            for layer_type in layer_types 
+            if layer_type not in ['Dropout', 'ReLU', 'MaxPool2d', 'BatchNorm2d']
+        }
+        
+        # For layers that are typically treated as identity in LRP or don't affect relevance as much
+        for layer_type in layer_types:
+            if layer_type in ['Dropout', 'ReLU', 'MaxPool2d', 'BatchNorm2d']:
+                print(f"Using zero rule for non-important layer type: {layer_type}")
+                layer_rule_possibilities[layer_type] = ['zero']  # Use zero rule for non-important layers
+        
+        print(f"Layer rule possibilities: {layer_rule_possibilities}")
+        
+        # Generate all possible combinations of rules for each layer type
+        rule_combinations = list(itertools.product(*[[(layer_type, rule) for rule in rules] 
+                                                  for layer_type, rules in layer_rule_possibilities.items()]))
+        
+        # Convert to dictionary format for each combination
+        rule_combinations_dict = []
+        for combo in rule_combinations:
+            rule_dict = {layer_type: rule for layer_type, rule in combo}
+            rule_combinations_dict.append(rule_dict)
+        
+        print(f"Generated {len(rule_combinations_dict)} rule combinations for testing")
+        if len(rule_combinations_dict) <= 5:
+            print(f"Rule combinations: {rule_combinations_dict}")
+        else:
+            print(f"First 3 combinations: {rule_combinations_dict[:3]}")
+            print(f"Last 3 combinations: {rule_combinations_dict[-3:]}")
+        
+        # Store best configuration and its score
+        best_rule_config = None
+        best_score = float('-inf')  # Start with worst possible score
+        
+        # Test each rule combination briefly and find the best starting point
+        print("Testing rule combinations to find best starting point")
+        for i, rule_config in enumerate(rule_combinations_dict):
+            # Create layer values based on the default values
+            layer_values = {layer_type: default_rule_values[rule] for layer_type, rule in rule_config.items()}
+            
+            # Create LRP with this configuration
+            lrp = UniformLayerLRP(model, layer_rule_mapping=rule_config, layer_value_mapping=layer_values,
+                                correct_class_only=correct_class_only)
+            
+            # Evaluate on a subset of images if there are many
+            subset_size = len(images)
+            print(f"Evaluating rule combination {i+1}/{len(rule_combinations_dict)}")
+            
+            # Print a summary of the rule configuration
+            rule_counts = {}
+            for rule_type in set(rule_config.values()):
+                rule_counts[rule_type] = list(rule_config.values()).count(rule_type)
+            print(f"  Rule distribution: {rule_counts}")
+            
+            subset_images = images[:subset_size]
+            subset_labels = labels[:subset_size] if labels is not None else None
+            
+            try:
+                # Compute relevance map
+                with torch.no_grad():
+                    relevance_map = lrp.compute_relevance(subset_images, subset_labels if correct_class_only else None)
+                
+                # Compute scores based on criterion
+                if criterion == 'sparseness':
+                    scores = sparseness(relevance_map)
+                    sign = 1  # Higher is better
+                elif criterion == 'pixel_flipping':
+                    scores = pixel_flipping(relevance_map, model, subset_images, subset_labels, num_steps=3)
+                    sign = 1  # Higher is better
+                elif criterion == 'average_sensitivity':
+                    scores, _ = average_sensitivity(relevance_map, model, subset_images, subset_labels, 
+                                                num_steps=3, baseline=baseline, attr_model=lrp)
+                    sign = -1  # Lower is better
+                elif criterion == 'faithfulness':
+                    scores = faithfulness_correlation(relevance_map, model, subset_images, subset_labels, 
+                                                  num_steps=3, subset_size=5)
+                    sign = 1  # Higher is better
+                
+                # Calculate average score
+                avg_score = sum(scores) / len(scores) * sign
+                print(f"  Average score: {avg_score:.4f}")
+                
+                # Update best configuration if this one is better
+                if avg_score > best_score:
+                    best_score = avg_score
+                    best_rule_config = rule_config
+                    print(f"  New best rule config found (score: {avg_score:.4f})")
+            
+            except Exception as e:
+                print(f"  Error testing rule config: {e}")
+                continue
+        
+        # If no valid configuration was found, fall back to basic config
+        if best_rule_config is None:
+            print("No valid rule configuration found, falling back to defaults")
+            best_rule_config = {}
+            for layer_type in layer_types:
+                if layer_type in ['Dropout', 'ReLU', 'MaxPool2d', 'BatchNorm2d']:
+                    best_rule_config[layer_type] = 'zero'
+                else:
+                    best_rule_config[layer_type] = 'epsilon'
+        
+        # Store the best rule configuration for use in the fitness function
+        selected_rule_config = best_rule_config
+        print(f"Selected rule configuration: {selected_rule_config}")
+    
+    
     # Do a single forward pass to collect MaxPool information
-    # This is important for UniformValueLRP to track layer-specific MaxPool indices
-    if optimization_type == 'UniformValue':
-        # Use default rule type for initial forward pass
-        temp_rule_types = [rule_type] * num_layers
-        temp_lrp = UniformValueLRP(model, rule_types=temp_rule_types, rule_values=default_rule_values, 
-                                 correct_class_only=correct_class_only)
+    # This is important for UniformValueLRP and UniformLayerLRP to track layer-specific indices
+    if optimization_type in ['UniformValue', 'UniformLayer']:
+        if optimization_type == 'UniformValue':
+            # Use default rule type for initial forward pass
+            temp_rule_types = [rule_type] * num_layers
+            temp_lrp = UniformValueLRP(model, rule_types=temp_rule_types, rule_values=default_rule_values, 
+                                    correct_class_only=correct_class_only)
+        else:  # UniformLayer
+            # Use the selected rule configuration for initial forward pass
+            layer_values = {layer_type: default_rule_values[rule] for layer_type, rule in selected_rule_config.items()}
+            temp_lrp = UniformLayerLRP(model, layer_rule_mapping=selected_rule_config, 
+                                    layer_value_mapping=layer_values,
+                                    correct_class_only=correct_class_only)
         
         # Just do a forward pass to collect MaxPool indices, we don't need the actual relevance
         with torch.no_grad():
@@ -95,13 +227,8 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
                 rule_types = []
                 for i, p in enumerate(params):
                     # Map the continuous parameter to one of the four rule types
-                    # Use modulo 4 to handle any real number
-                    # rule_index = int(abs(p) % 4)
-
                     rule_index = int((p * 4) % 4)
-    
                     rule_types.append(rule_mapping[rule_index])
-
                 
                 # Use default rule values
                 rule_values = default_rule_values.copy()
@@ -114,6 +241,41 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
                 if 'maxpool_info' in locals():
                     lrp.max_pool_indices = maxpool_info
                 
+            elif optimization_type == 'UniformLayer':
+                # Handle UniformLayerLRP optimization
+                # In this case, params contains values for each layer type
+                
+                # Map parameters to layer values
+                layer_values = {}
+                param_idx = 0
+                for layer_type in selected_rule_config.keys():
+                    rule = selected_rule_config[layer_type]
+                    
+                    # Get the appropriate value based on the rule type
+                    if rule == 'alpha_beta':
+                        # Alpha must be >= 1.0
+                        value = max(1.0, abs(params[param_idx]) + 1.0)
+                    elif rule == 'epsilon':
+                        # Epsilon should be in a reasonable range
+                        value = min(1.0, abs(params[param_idx]))
+                    elif rule == 'gamma':
+                        # Gamma should be positive and reasonable
+                        value = max(0.1, min(3.0, abs(params[param_idx])))
+                    else:  # Zero rule
+                        value = 0.0
+                    
+                    layer_values[layer_type] = value
+                    param_idx += 1
+                
+                # Create LRP with the selected rule types and optimized values
+                lrp = UniformLayerLRP(model, layer_rule_mapping=selected_rule_config, 
+                                   layer_value_mapping=layer_values,
+                                   correct_class_only=correct_class_only)
+                
+                # Reuse the MaxPool indices from the initial forward pass
+                if 'maxpool_info' in locals():
+                    lrp.max_pool_indices = maxpool_info
+            
             else:
                 raise ValueError(f"Unsupported optimization type: {optimization_type}")
             
@@ -207,4 +369,8 @@ def create_fitness_function(model, images, labels=None, criterion='sparseness', 
             print(traceback.format_exc())
             return float('inf')  # Return bad score on error
     
-    return fitness_function
+    # For UniformLayerLRP, return the fitness function and the selected rule configuration
+    if optimization_type == 'UniformLayer':
+        return fitness_function, selected_rule_config
+    else:
+        return fitness_function

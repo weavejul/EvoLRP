@@ -7,7 +7,7 @@ of the metrics.
 import argparse
 import time
 import pathlib
-from captum.attr import LayerAttribution, LayerGradCam, Lime, IntegratedGradients
+from captum.attr import LayerAttribution, LayerGradCam, Lime, IntegratedGradients, LRP, GuidedGradCam
 from skimage.segmentation import slic
 
 import torch
@@ -15,13 +15,14 @@ from torchvision.models import vgg16, VGG16_Weights
 
 from datasets import get_mnist_data, get_imagenet_data
 from models import load_model
-from lrp import UniformRuleLRP
+from lrp import UniformRuleLRP, UniformLayerLRP
 from evaluation import sparseness, pixel_flipping, average_sensitivity, faithfulness_correlation
 import numpy as np
 import json
 import warnings
 warnings.filterwarnings('ignore')
 import os
+import time
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128,expandable_segments:True'
 
 def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criterion, 
@@ -76,7 +77,7 @@ def compute_scores(model, x_batch, y_batch, a_batch, num_steps, baseline, criter
     # Use a weighted combination of mean and minimum for robust optimization
     mean_score = sum(batch_scores) / len(batch_scores)
     
-    return mean_score
+    return batch_scores, mean_score
 
 if __name__ == "__main__":
 
@@ -135,7 +136,7 @@ if __name__ == "__main__":
         help="XAI method",
         default="IntegratedGradients",
         type=str,
-        choices=["lrp", "LayerGradCam", "Lime", "IntegratedGradients"]
+        choices=["lrp", "LayerGradCam", "Lime", "IntegratedGradients", "LRP"]
     )
     parser.add_argument(
         "-c",
@@ -152,7 +153,7 @@ if __name__ == "__main__":
         "--lrp-params",
         dest="lrp_params",
         help="LRP parameters",
-        default="saved_params/opt_eps_pf.json",
+        default="saved_params/opt_alpha_beta_faithfulness.json",
         type=str
     )
 
@@ -187,6 +188,7 @@ if __name__ == "__main__":
     model.to(device)
     model.eval()
 
+    time_start = time.time()
     # set up LRP model
     # Load parameters from JSON files
     lrp_model = None
@@ -201,18 +203,27 @@ if __name__ == "__main__":
         #     lrp_model = LRPModel.from_uniform_value(model=model, per_layer_rules=config.per_layer_rules)
         # elif config.mode == "layer_type":
         #     lrp_model = LRPModel.from_layer_type(model=model, layer_type_config=config.layer_type_config)
-        # elif config.mode == "composite_layer":
-        #     lrp_model = LRPModel.from_composite_layer(model=model, composite_config=config.composite_layer_config)
+        elif config.mode == "composite_layer":
+            lrp_model = UniformLayerLRP(
+                model, 
+                layer_rule_mapping={'Conv2d': 'zero', 'Linear': 'alpha_beta', 'MaxPool2d': 'zero', 'ReLU': 'zero', 'Dropout': 'zero'},
+                layer_value_mapping={'Conv2d': 4.8342, 'Linear': 1.0, 'MaxPool2d': 0.0, 'ReLU': 0.0, 'Dropout': 0.0},
+                correct_class_only=True
+            )
         else:
             raise ValueError(f"Invalid mode: {config.mode}")
 
     # set up XAI methods
     lime = Lime(model)
     ig = IntegratedGradients(model)
-    gradcam = LayerGradCam(model, conv_layer)
+    gradcam = GuidedGradCam(model, conv_layer)
+    lrp = LRP(model)
 
     scores = np.array([])
-    for i, (x, y) in enumerate(data_loader):
+    # Store detailed score information
+    score_details = []
+    
+    for batch_idx, (x, y) in enumerate(data_loader):
         # Print GPU memory usage
         # print(f"Memory allocated: {torch.cuda.memory_allocated() / 1e9} GB")
         # print(f"Memory reserved: {torch.cuda.memory_reserved() / 1e9} GB")
@@ -231,6 +242,9 @@ if __name__ == "__main__":
         # Keep only the correct predictions
         x = x[correct_mask]
         y = y[correct_mask]
+        # Store indices of correct predictions
+        correct_indices = torch.where(correct_mask)[0].cpu().numpy()
+        
         # Check if we have any samples left
         if len(x) == 0:
             print("Warning: All predictions were incorrect in this batch")
@@ -242,16 +256,16 @@ if __name__ == "__main__":
                 a_batch = lrp_model.compute_relevance(x, y)
                 attr_model = lrp_model
             elif config.xai_method == "LayerGradCam":
-                gradcam_attr = gradcam.attribute(
+                a_batch = gradcam.attribute(
                     x,
                     target=y
                 )
                 # Use a more sophisticated interpolation method
-                a_batch = LayerAttribution.interpolate(
-                    gradcam_attr, 
-                    x.shape[2:],
-                    interpolate_mode='bicubic'  # Use bicubic interpolation instead of default
-                )
+                # a_batch = LayerAttribution.interpolate(
+                #     gradcam_attr, 
+                #     x.shape[2:],
+                #     interpolate_mode='bicubic'  # Use bicubic interpolation instead of default
+                # )
                 attr_model = gradcam
             elif config.xai_method == "Lime":
                 # Create feature masks for each image in the batch
@@ -282,22 +296,62 @@ if __name__ == "__main__":
                     return_convergence_delta=True
                 )
                 attr_model = ig
+            elif config.xai_method == "LRP":
+                a_batch = lrp.attribute(x, y)
+                attr_model = lrp
             else:
                 raise ValueError(f"Invalid XAI method: {config.xai_method}")
 
             if x.shape[0] != a_batch.shape[0]:
                 a_batch = a_batch.unsqueeze(0)
-            batch_scores = compute_scores(model, x, y, a_batch, num_steps=5, baseline='zero', criterion=config.criterion,
+            
+            # Normalize attributions if using LIME before metric calculation
+            if config.xai_method == "Lime":
+                # Normalize LIME attributions to have similar scale as other methods
+                # First ensure no NaN or Inf values
+                a_batch = torch.nan_to_num(a_batch, nan=0.0, posinf=1.0, neginf=-1.0)
+                
+                # Apply min-max normalization per attribution map
+                for i in range(a_batch.shape[0]):
+                    attr_min = a_batch[i].min()
+                    attr_max = a_batch[i].max()
+                    if attr_max > attr_min:  # Avoid division by zero
+                        a_batch[i] = (a_batch[i] - attr_min) / (attr_max - attr_min)
+                        # Scale to typical range for other methods
+                        a_batch[i] = a_batch[i] * 2.0 - 1.0  # Scale to [-1, 1] range
+            
+            # Get individual scores instead of just the mean
+            individual_scores, batch_mean_score = compute_scores(
+                model, x, y, a_batch, num_steps=5, baseline='zero', criterion=config.criterion,
                 attr_model=attr_model, method=config.xai_method, feature_masks=feature_masks
             )
-            if type(batch_scores) == torch.Tensor:
-                batch_scores = batch_scores.detach().cpu().numpy().item()
-            if batch_scores is None:
-                batch_scores = 0
-            scores = np.append(scores, batch_scores)
+            
+            # Convert to numpy if it's a tensor
+            if isinstance(individual_scores, torch.Tensor):
+                individual_scores = individual_scores.detach().cpu().numpy()
+            
+            # Store each sample's information
+            for i, score in enumerate(individual_scores):
+                if not np.isnan(score):
+                    sample_idx = correct_indices[i]
+                    label = y[i].item()
+                    # Store score with metadata
+                    score_details.append({
+                        'score': float(score),
+                        'batch_idx': batch_idx,
+                        'sample_idx': int(sample_idx),
+                        'label': int(label),
+                        'pred_conf': float(torch.softmax(y_pred[correct_mask][i], dim=0).max().item())
+                    })
+            
+            if isinstance(batch_mean_score, torch.Tensor):
+                batch_mean_score = batch_mean_score.detach().cpu().numpy().item()
+            if batch_mean_score is None:
+                batch_mean_score = 0
+            scores = np.append(scores, batch_mean_score)
             
             # Explicitly delete tensors to free memory
-            del a_batch, x, y, y_pred, y_pred_classes, batch_scores
+            del a_batch, x, y, y_pred, y_pred_classes, individual_scores, batch_mean_score
                 
             # Force garbage collection
             import gc
@@ -313,17 +367,18 @@ if __name__ == "__main__":
                 break
             else:
                 raise e
-    
+                
     # Add checks before calculating statistics
     if scores.size == 0:
         print("Warning: No valid scores were collected")
         mean_score = float('nan')
         std_score = float('nan')
     else:
-        # Filter out any NaN values before calculating statistics
+        # Filter out any NaN values and values greater than 5 before calculating statistics
         valid_scores = scores[~np.isnan(scores)]
+        valid_scores = valid_scores[valid_scores < 5]
         if valid_scores.size == 0:
-            print("Warning: All scores were NaN")
+            print("Warning: All scores were NaN or greater than 10")
             mean_score = float('nan')
             std_score = float('nan')
         else:
@@ -333,3 +388,47 @@ if __name__ == "__main__":
     print(f"Number of valid scores: {scores.size}")
     print(f"Mean score: {mean_score}")
     print(f"Standard deviation: {std_score}")
+
+    # Process and display the top and bottom scores
+    if score_details:
+        # Sort by score (ascending)
+        sorted_scores = sorted(score_details, key=lambda x: x['score'])
+        
+        # Get bottom 10 (lowest) scores
+        bottom_10 = sorted_scores[:10] if len(sorted_scores) >= 10 else sorted_scores
+        
+        # Get top 10 (highest) scores
+        top_10 = sorted_scores[-20:][::-1] if len(sorted_scores) >= 20 else sorted_scores[::-1]
+        
+        # Display the results
+        print("\n=== Top 10 Highest Scores ===")
+        print(f"{'Score':<10} {'Batch':<8} {'Sample':<8} {'Label':<8} {'Pred Conf':<10}")
+        print("-" * 50)
+        for item in top_10:
+            print(f"{item['score']:<10.4f} {item['batch_idx']:<8} {item['sample_idx']:<8} {item['label']:<8} {item['pred_conf']:<10.4f}")
+        
+        print("\n=== Top 10 Lowest Scores ===")
+        print(f"{'Score':<10} {'Batch':<8} {'Sample':<8} {'Label':<8} {'Pred Conf':<10}")
+        print("-" * 50)
+        for item in bottom_10:
+            print(f"{item['score']:<10.4f} {item['batch_idx']:<8} {item['sample_idx']:<8} {item['label']:<8} {item['pred_conf']:<10.4f}")
+        
+        # Optionally, save the detailed results to a JSON file in the output directory
+        result_file = os.path.join(config.output_dir, f"{config.xai_method}_{config.criterion}_detailed_results.json")
+        with open(result_file, 'w') as f:
+            json.dump({
+                'top_scores': top_10,
+                'bottom_scores': bottom_10,
+                'mean_score': float(mean_score),
+                'std_score': float(std_score),
+                'config': {
+                    'xai_method': config.xai_method,
+                    'criterion': config.criterion,
+                    'mode': config.mode,
+                    'rule_name': config.rule_name
+                }
+            }, f, indent=2)
+        print(f"\nDetailed results saved to {result_file}")
+
+    time_end = time.time()
+    print(f"Time taken: {time_end - time_start} seconds")
